@@ -1,11 +1,13 @@
 # Informe técnico detallado — Proyecto SIAC
 
-**Proyecto:** SIAC — Sistema de Escritorios Interconectados  
-**Repositorio:** `dppablito4-oss/proyecto_SIAC`  
-**Rama de desarrollo:** `siac/mvp`  
-**Base técnica:** Moonlight Qt + Sunshine  
-**Fecha del trabajo:** 7 de octubre de 2026  
-**Commit inicial del MVP:** `39dfe73603b8f6c45a3860e87754c9d21b56768a`
+| Campo | Valor |
+|---|---|
+| Proyecto | SIAC — Sistema de Escritorios Interconectados |
+| Repositorio | `dppablito4-oss/proyecto_SIAC` |
+| Rama de desarrollo | `siac/mvp` |
+| Base técnica | Moonlight Qt + Sunshine |
+| Fecha del trabajo | 7 de octubre de 2026 |
+| Commit inicial del MVP | `39dfe73603b8f6c45a3860e87754c9d21b56768a` |
 
 ## 1. Resumen ejecutivo
 
