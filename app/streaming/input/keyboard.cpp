@@ -1,4 +1,5 @@
 #include "streaming/session.h"
+#include "siac/sessionswitcher.h"
 
 #include <Limelight.h>
 #include "SDL_compat.h"
@@ -188,6 +189,57 @@ void SdlInputHandler::handleKeyEvent(SDL_KeyboardEvent* event)
     char modifiers;
     char flags;
     bool shouldNotConvertToScanCodeOnServer = false;
+
+    // SIAC shortcuts must be consumed locally before Moonlight converts and
+    // forwards them to the remote host. Qt's event loop is blocked while the
+    // SDL streaming loop runs, so the Windows global-hotkey path cannot handle
+    // this case by itself.
+    SessionSwitcher* switcher = SessionSwitcher::instance();
+    if (switcher && switcher->enabled()) {
+        int functionKey = 0;
+        if (event->keysym.scancode >= SDL_SCANCODE_F1 && event->keysym.scancode <= SDL_SCANCODE_F12) {
+            functionKey = event->keysym.scancode - SDL_SCANCODE_F1 + 1;
+        }
+        else if (event->keysym.scancode >= SDL_SCANCODE_F13 && event->keysym.scancode <= SDL_SCANCODE_F24) {
+            functionKey = event->keysym.scancode - SDL_SCANCODE_F13 + 13;
+        }
+
+        const bool configuredNextKey = functionKey == switcher->nextFunctionKey();
+        const bool configuredLocalKey = functionKey == switcher->localFunctionKey();
+        if (event->state == SDL_RELEASED &&
+                ((configuredNextKey && m_SiacNextKeyDown) ||
+                 (configuredLocalKey && m_SiacLocalKeyDown))) {
+            if (configuredNextKey) m_SiacNextKeyDown = false;
+            if (configuredLocalKey) m_SiacLocalKeyDown = false;
+            return;
+        }
+
+        const auto shortcutAction = SessionSwitchPlanner::matchShortcut(
+                    functionKey,
+                    event->keysym.mod & KMOD_CTRL,
+                    event->keysym.mod & KMOD_ALT,
+                    event->keysym.mod & KMOD_SHIFT,
+                    event->keysym.mod & KMOD_GUI,
+                    switcher->nextFunctionKey(),
+                    switcher->localFunctionKey());
+        const bool nextKey = shortcutAction == SessionSwitchPlanner::ShortcutAction::NextComputer;
+        const bool localKey = shortcutAction == SessionSwitchPlanner::ShortcutAction::ReturnLocal;
+        if (event->state == SDL_PRESSED && (nextKey || localKey)) {
+            if (nextKey) m_SiacNextKeyDown = true;
+            if (localKey) m_SiacLocalKeyDown = true;
+
+            // Ctrl and Alt may already have been sent before the function key.
+            // Release them explicitly so no modifier remains stuck remotely.
+            raiseAllKeys();
+            if (nextKey) {
+                switcher->requestNext();
+            }
+            else {
+                switcher->returnLocal();
+            }
+            return;
+        }
+    }
 
     if (event->repeat) {
         // Ignore repeat key down events

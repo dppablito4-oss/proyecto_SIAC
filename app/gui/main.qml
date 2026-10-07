@@ -63,6 +63,51 @@ ApplicationWindow {
         }
     }
 
+    function launchSiacSession(session, appName) {
+        var component = Qt.createComponent("StreamSegue.qml")
+        if (component.status !== Component.Ready) {
+            streamSegueErrorDialog.text = qsTr("SIAC could not create the streaming view: %1").arg(component.errorString())
+            streamSegueErrorDialog.open()
+            return
+        }
+        var segue = component.createObject(stackView, {
+                                               "appName": appName,
+                                               "session": session
+                                           })
+        stackView.push(segue)
+    }
+
+    function showSiacUi() {
+        if (StreamingPreferences.uiDisplayMode == StreamingPreferences.UI_MAXIMIZED) {
+            window.showMaximized()
+        }
+        else if (StreamingPreferences.uiDisplayMode == StreamingPreferences.UI_FULLSCREEN) {
+            window.showFullScreen()
+        }
+        else {
+            window.showNormal()
+        }
+        window.raise()
+        window.requestActivate()
+    }
+
+    Connections {
+        target: ComputerManager.sessionSwitcher
+
+        onSessionRequested: launchSiacSession(session, appName)
+        onShowUiRequested: showSiacUi()
+        onShowLocalDesktopRequested: window.showMinimized()
+        onOpenSettingsRequested: {
+            showSiacUi()
+            navigateTo("qrc:/gui/SettingsView.qml", SettingsView)
+        }
+        onErrorOccurred: {
+            streamSegueErrorDialog.text = message
+            showSiacUi()
+            streamSegueErrorDialog.open()
+        }
+    }
+
     function hasHardwareAccelerationChanged() {
         if (!SystemProperties.hasHardwareAcceleration && StreamingPreferences.videoDecoderSelection !== StreamingPreferences.VDS_FORCE_SOFTWARE) {
             if (SystemProperties.isRunningXWayland) {

@@ -2,6 +2,7 @@
 #include "boxartmanager.h"
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
+#include "siac/sessionswitcher.h"
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -163,7 +164,8 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
       m_PollingRef(0),
       m_MdnsBrowser(nullptr),
       m_CompatFetcher(nullptr),
-      m_NeedsDelayedFlush(false)
+      m_NeedsDelayedFlush(false),
+      m_SessionSwitcher(nullptr)
 {
     QSettings settings;
 
@@ -198,6 +200,10 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     // while quitting, however this is a one time signal - additional
     // requests would not be aborted and block termination.
     connect(QCoreApplication::instance(), &QCoreApplication::aboutToQuit, this, &ComputerManager::handleAboutToQuit);
+
+    // SIAC is deliberately layered on top of the existing host manager so it
+    // reuses Moonlight discovery, pairing, polling, and persisted host data.
+    m_SessionSwitcher = new SessionSwitcher(this, this);
 }
 
 ComputerManager::~ComputerManager()

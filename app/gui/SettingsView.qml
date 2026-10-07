@@ -100,6 +100,153 @@ Flickable {
         spacing: 15
 
         GroupBox {
+            id: siacSettingsGroupBox
+            width: (parent.width - (parent.leftPadding + parent.rightPadding))
+            padding: 12
+            title: "<font color=\"skyblue\">" + qsTr("SIAC - Interconnected Desktops") + "</font>"
+            font.pointSize: 12
+
+            Column {
+                anchors.fill: parent
+                spacing: 8
+
+                CheckBox {
+                    width: parent.width
+                    text: qsTr("Enable SIAC keyboard switching")
+                    checked: ComputerManager.sessionSwitcher.enabled
+                    onToggled: ComputerManager.sessionSwitcher.enabled = checked
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: qsTr("Local computer (SIAC never connects to this host):")
+                }
+
+                ComboBox {
+                    id: siacLocalComputer
+                    width: parent.width
+                    model: ComputerManager.sessionSwitcher.orderedHostNames
+
+                    function refreshSelection() {
+                        currentIndex = ComputerManager.sessionSwitcher.orderedHostUuids.indexOf(
+                                    ComputerManager.sessionSwitcher.localComputerUuid)
+                    }
+
+                    Component.onCompleted: refreshSelection()
+                    onModelChanged: refreshSelection()
+                    onActivated: ComputerManager.sessionSwitcher.setLocalComputerAt(currentIndex)
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    text: qsTr("Navigation order (select a host, then move it):")
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 5
+
+                    ComboBox {
+                        id: siacOrderComputer
+                        width: parent.width - siacMoveUp.width - siacMoveDown.width - 10
+                        model: ComputerManager.sessionSwitcher.orderedHostNames
+                    }
+                    Button {
+                        id: siacMoveUp
+                        text: "\u2191"
+                        enabled: siacOrderComputer.currentIndex > 0
+                        onClicked: {
+                            var oldIndex = siacOrderComputer.currentIndex
+                            ComputerManager.sessionSwitcher.moveHost(oldIndex, -1)
+                            siacOrderComputer.currentIndex = oldIndex - 1
+                        }
+                    }
+                    Button {
+                        id: siacMoveDown
+                        text: "\u2193"
+                        enabled: siacOrderComputer.currentIndex >= 0 &&
+                                 siacOrderComputer.currentIndex < siacOrderComputer.count - 1
+                        onClicked: {
+                            var oldIndex = siacOrderComputer.currentIndex
+                            ComputerManager.sessionSwitcher.moveHost(oldIndex, 1)
+                            siacOrderComputer.currentIndex = oldIndex + 1
+                        }
+                    }
+                }
+
+                Label {
+                    text: qsTr("Sunshine desktop application name")
+                }
+                TextField {
+                    width: parent.width
+                    text: ComputerManager.sessionSwitcher.desktopAppName
+                    onEditingFinished: ComputerManager.sessionSwitcher.desktopAppName = text
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 10
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Next computer: Ctrl+Alt+F")
+                    }
+                    SpinBox {
+                        from: 1
+                        to: 24
+                        value: ComputerManager.sessionSwitcher.nextFunctionKey
+                        onValueChanged: {
+                            if (ComputerManager.sessionSwitcher.nextFunctionKey !== value)
+                                ComputerManager.sessionSwitcher.nextFunctionKey = value
+                        }
+                    }
+                }
+
+                Row {
+                    width: parent.width
+                    spacing: 10
+                    Label {
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("Return local: Ctrl+Alt+F")
+                    }
+                    SpinBox {
+                        from: 1
+                        to: 24
+                        value: ComputerManager.sessionSwitcher.localFunctionKey
+                        onValueChanged: {
+                            if (ComputerManager.sessionSwitcher.localFunctionKey !== value)
+                                ComputerManager.sessionSwitcher.localFunctionKey = value
+                        }
+                    }
+                }
+
+                CheckBox {
+                    width: parent.width
+                    text: qsTr("Open SIAC sessions in full screen")
+                    checked: ComputerManager.sessionSwitcher.forceFullscreen
+                    onToggled: ComputerManager.sessionSwitcher.forceFullscreen = checked
+                }
+
+                CheckBox {
+                    width: parent.width
+                    text: qsTr("Start SIAC when signing in to Windows")
+                    checked: ComputerManager.sessionSwitcher.autoStartEnabled
+                    onToggled: ComputerManager.sessionSwitcher.autoStartEnabled = checked
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    color: ComputerManager.sessionSwitcher.hotkeysRegistered ? "lightgreen" : "orange"
+                    text: ComputerManager.sessionSwitcher.hotkeysRegistered ?
+                              qsTr("Global shortcuts registered successfully.") :
+                              ComputerManager.sessionSwitcher.hotkeyError
+                }
+            }
+        }
+
+        GroupBox {
             id: basicSettingsGroupBox
             width: (parent.width - (parent.leftPadding + parent.rightPadding))
             padding: 12

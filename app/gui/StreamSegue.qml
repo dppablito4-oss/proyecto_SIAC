@@ -5,6 +5,7 @@ import QtQuick.Window 2.2
 import SdlGamepadKeyNavigation 1.0
 import Session 1.0
 import SystemProperties 1.0
+import ComputerManager 1.0
 
 Item {
     property Session session
@@ -79,7 +80,9 @@ Item {
         }
         else {
             // Show the Qt window again after streaming
-            window.visible = true
+            if (!ComputerManager.sessionSwitcher.hasPendingAction()) {
+                window.visible = true
+            }
 
             // Display any launch errors. We do this after
             // the Qt UI is visible again to prevent losing
@@ -98,6 +101,10 @@ Item {
         // and keeps other libraries (like SDL_TTF) around until it is deleted.
         session = null
         gc()
+
+        // If a SIAC shortcut requested another computer while SDL owned the
+        // event loop, cleanup is now complete and the next session may start.
+        ComputerManager.sessionSwitcher.sessionEnded()
     }
 
     StackView.onDeactivating: {

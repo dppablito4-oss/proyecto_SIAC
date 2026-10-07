@@ -1,4 +1,29 @@
-# Moonlight PC
+# SIAC - Sistema de Escritorios Interconectados
+
+SIAC es una extensión de Moonlight Qt para alternar, mediante atajos locales, entre escritorios Windows servidos por Sunshine dentro de una LAN. Conserva el descubrimiento, emparejamiento, audio, vídeo e input originales de Moonlight.
+
+Estado del incremento MVP:
+
+- `Ctrl+Alt+F9`: siguiente equipo emparejado y disponible según el orden SIAC.
+- `Ctrl+Alt+F10`: termina únicamente la sesión remota y vuelve al escritorio físico local.
+- Los atajos se interceptan dentro del bucle SDL antes de enviarse al host.
+- Equipo local, orden, teclas F1-F24, nombre de la aplicación Sunshine, pantalla completa e inicio automático son persistentes.
+- Incluye bandeja del sistema y mantiene disponibles todas las funciones originales de Moonlight.
+
+Documentación del proyecto:
+
+- [Arquitectura](docs/SIAC_ARCHITECTURE.md)
+- [Instalación de Sunshine y configuración de cuatro equipos](docs/SIAC_INSTALLATION.md)
+- [Compilación](docs/SIAC_BUILD.md)
+- [Pruebas y resultados](docs/SIAC_TESTS.md)
+- [Limitaciones conocidas](docs/SIAC_LIMITATIONS.md)
+- [Registro de cambios](CHANGELOG_SIAC.md)
+
+La base y los cambios se distribuyen bajo GPLv3; consulte [LICENSE](LICENSE). No se almacenan contraseñas de Sunshine ni secretos SIAC en texto plano.
+
+---
+
+# Moonlight PC (upstream)
 
 [Moonlight PC](https://moonlight-stream.org) is an open source PC client for NVIDIA GameStream and [Sunshine](https://github.com/LizardByte/Sunshine).
 

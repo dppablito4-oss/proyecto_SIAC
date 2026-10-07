@@ -3,6 +3,7 @@
 #include "nvcomputer.h"
 #include "settings/streamingpreferences.h"
 #include "settings/compatfetcher.h"
+#include "siac/sessionswitcher.h"
 
 #include <qmdnsengine/server.h>
 #include <qmdnsengine/cache.h>
@@ -210,6 +211,7 @@ private:
 class ComputerManager : public QObject
 {
     Q_OBJECT
+    Q_PROPERTY(SessionSwitcher* sessionSwitcher READ sessionSwitcher CONSTANT)
 
     friend class DeferredHostDeletionTask;
     friend class PendingAddTask;
@@ -236,6 +238,8 @@ public:
     void quitRunningApp(NvComputer* computer);
 
     QVector<NvComputer*> getComputers();
+
+    SessionSwitcher* sessionSwitcher() const { return m_SessionSwitcher; }
 
     // computer is deleted inside this call
     void deleteHost(NvComputer* computer);
@@ -283,4 +287,5 @@ private:
     QMutex m_DelayedFlushMutex; // Lock ordering: Must never be acquired while holding NvComputer lock
     QWaitCondition m_DelayedFlushCondition;
     bool m_NeedsDelayedFlush;
+    SessionSwitcher* m_SessionSwitcher;
 };

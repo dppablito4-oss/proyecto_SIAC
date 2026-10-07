@@ -221,6 +221,8 @@ private:
     QSet<uint32_t> m_KeysDown;
     bool m_FakeMouseCaptureActive;
     bool m_KeyboardCaptureActive;
+    bool m_SiacNextKeyDown = false;
+    bool m_SiacLocalKeyDown = false;
     QString m_OldIgnoreDevices;
     QString m_OldIgnoreDevicesExcept;
     QStringList m_IgnoreDeviceGuids;

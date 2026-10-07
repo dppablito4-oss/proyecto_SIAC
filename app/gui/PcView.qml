@@ -202,6 +202,13 @@ CenteredGridView {
                     }
                 }
                 NavigableMenuItem {
+                    text: model.uuid === ComputerManager.sessionSwitcher.localComputerUuid ?
+                              qsTr("This is the local SIAC computer") :
+                              qsTr("Set as local SIAC computer")
+                    enabled: model.uuid !== ComputerManager.sessionSwitcher.localComputerUuid
+                    onTriggered: ComputerManager.sessionSwitcher.localComputerUuid = model.uuid
+                }
+                NavigableMenuItem {
                     text: qsTr("Delete PC")
                     onTriggered: {
                         deletePcDialog.pcIndex = index
