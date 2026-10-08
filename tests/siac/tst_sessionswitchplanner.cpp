@@ -131,6 +131,15 @@ void SessionSwitchPlannerTest::rejectsInvalidOrIdenticalHotkeys()
     QVERIFY(!SessionSwitchPlanner::validHotkeys(9, 9));
     QVERIFY(!SessionSwitchPlanner::validHotkeys(0, 10));
     QVERIFY(!SessionSwitchPlanner::validHotkeys(9, 25));
+    const auto persisted = SessionSwitchPlanner::normalizeHotkeys(12, 12);
+    QVERIFY(persisted.corrected);
+    QCOMPARE(persisted.nextFunctionKey, 9);
+    QCOMPARE(persisted.localFunctionKey, 10);
+
+    const auto valid = SessionSwitchPlanner::normalizeHotkeys(8, 11);
+    QVERIFY(!valid.corrected);
+    QCOMPARE(valid.nextFunctionKey, 8);
+    QCOMPARE(valid.localFunctionKey, 11);
 }
 
 void SessionSwitchPlannerTest::selectsRunningPreferredOrDirectApplication()

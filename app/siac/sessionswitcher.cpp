@@ -110,9 +110,11 @@ void SessionSwitcher::loadSettings()
     m_AutoStartEnabled = settings.value(QStringLiteral("autoStart"), false).toBool();
     settings.endGroup();
 
-    if (!SessionSwitchPlanner::validHotkeys(m_NextFunctionKey, m_LocalFunctionKey)) {
-        m_NextFunctionKey = 9;
-        m_LocalFunctionKey = 10;
+    const auto hotkeys = SessionSwitchPlanner::normalizeHotkeys(
+                m_NextFunctionKey, m_LocalFunctionKey);
+    if (hotkeys.corrected) {
+        m_NextFunctionKey = hotkeys.nextFunctionKey;
+        m_LocalFunctionKey = hotkeys.localFunctionKey;
         m_StartupWarning = tr("The saved SIAC shortcuts were invalid or identical and were reset to Ctrl+Alt+F9 and Ctrl+Alt+F10. You can correct them in Settings.");
         saveSettings();
     }

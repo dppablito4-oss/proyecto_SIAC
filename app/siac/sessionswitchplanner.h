@@ -36,6 +36,13 @@ public:
         bool valid = true;
     };
 
+    struct HotkeyConfiguration
+    {
+        int nextFunctionKey = 9;
+        int localFunctionKey = 10;
+        bool corrected = false;
+    };
+
     static Result next(const QStringList& orderedComputerUuids,
                        const QString& localComputerUuid,
                        const QString& activeComputerUuid,
@@ -46,6 +53,8 @@ public:
                                         int localFunctionKey);
 
     static bool validHotkeys(int nextFunctionKey, int localFunctionKey);
+    static HotkeyConfiguration normalizeHotkeys(int nextFunctionKey,
+                                                 int localFunctionKey);
     static int selectApplication(const QVector<ApplicationCandidate>& applications,
                                  int currentGameId, const QString& preferredName);
 };

@@ -75,6 +75,15 @@ bool SessionSwitchPlanner::validHotkeys(int nextFunctionKey, int localFunctionKe
             nextFunctionKey != localFunctionKey;
 }
 
+SessionSwitchPlanner::HotkeyConfiguration SessionSwitchPlanner::normalizeHotkeys(
+        int nextFunctionKey, int localFunctionKey)
+{
+    if (validHotkeys(nextFunctionKey, localFunctionKey)) {
+        return {nextFunctionKey, localFunctionKey, false};
+    }
+    return {9, 10, true};
+}
+
 int SessionSwitchPlanner::selectApplication(
         const QVector<ApplicationCandidate>& applications,
         int currentGameId, const QString& preferredName)
