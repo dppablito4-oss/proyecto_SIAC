@@ -55,4 +55,6 @@ Según la configuración de qmake, el binario puede quedar en el directorio actu
 
 ## Estado de este entorno
 
-No fue posible generar un ejecutable el 2026-10-07 porque el equipo de trabajo no tiene Qt/qmake, Visual Studio/MSVC/MSBuild, Windows SDK, CMake, Ninja, 7-Zip ni compilador C++ instalados o visibles. Los submódulos sí se descargaron. No se ejecutó `setup-deps.ps1` porque las bibliotecas por sí solas no permiten compilar sin Qt y MSVC.
+No fue posible compilar localmente el 2026-10-07 porque el equipo de trabajo no tiene Qt/qmake ni MSVC instalados o visibles. La validación reproducible se realizó con el workflow del repositorio.
+
+El commit de código `dd790aad` aprobó el [workflow 37717294591](https://github.com/dppablito4-oss/proyecto_SIAC/actions/runs/37717294591): Windows x64 y ARM64 con Qt 6.12, macOS, Linux AppImage y Steam Link con Qt 5.14. El build x64 ejecutó también Qt Test. El portable para pruebas físicas es [Moonlight-Windows-x64-dd790a](https://github.com/dppablito4-oss/proyecto_SIAC/actions/runs/37717294591/artifacts/11524971741).

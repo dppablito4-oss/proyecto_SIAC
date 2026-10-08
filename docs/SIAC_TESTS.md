@@ -2,6 +2,10 @@
 
 Fecha de la validación: 2026-10-07.
 
+## Ampliación SIAC v0.2
+
+El commit `dd790aad` conserva los 15 casos de comportamiento del controlador/planificador y añade 8 métodos para el protocolo de portapapeles: framing fragmentado, tamaños numéricos inválidos, rutas inseguras, deduplicación, autorización/pinning, código simétrico, restricción LAN y colisiones del manifiesto. Son 23 métodos de prueba, más inicialización y limpieza de Qt Test.
+
 ## Automatización incluida
 
 `tests/siac/tst_sessionswitchplanner.cpp` cubre:
@@ -26,11 +30,15 @@ Fecha de la validación: 2026-10-07.
 |---|---|---|
 | Repositorio y submódulos | Aprobada | `git submodule update --init --recursive` terminó correctamente. |
 | Espacios/blancos del parche | Aprobada | `git diff --check` sin errores. |
-| Integración estática SIAC | Aprobada | `tests/siac/source-integration.tests.ps1`: 11 aserciones aprobadas. |
+| Integración estática SIAC | Aprobada | `tests/siac/source-integration.tests.ps1`: 16 aserciones aprobadas. |
 | Herramientas de compilación local | Bloqueada por entorno | No existen qmake, MSVC, MSBuild, Windows SDK, CMake, Ninja ni compilador C++ en el equipo local. |
 | Qt Test SIAC | Aprobada en CI | Ejecutada dentro del build x64 Windows del workflow `37707269326`. |
 | Compilación Windows x64 y ARM64 | Aprobada en CI | Commit `ee7cdec2`, Windows 2025 y Qt 6.12; empaquetado y artefactos completados. |
 | Workflow completo | Aprobado | Windows/macOS, AppImage y Steam Link finalizaron correctamente en `37707269326`. |
+| Qt Test SIAC v0.2 | Aprobada en CI | 23 métodos ejecutados con código 0 dentro del build x64 del workflow `37717294591`. |
+| Compilación v0.2 | Aprobada en CI | Commit `dd790aad`; Windows x64/ARM64, macOS, AppImage y Steam Link completados con artefactos. |
+
+La aprobación automatizada de v0.2 no equivale a una prueba real de Ctrl+C/Ctrl+V entre dos PC; esa matriz permanece en `SIAC_CLIPBOARD_TESTS.md`.
 
 No se declara aprobada ninguna prueba no ejecutada.
 

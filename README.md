@@ -10,6 +10,13 @@ Estado del incremento MVP:
 - Equipo local, orden, teclas F1-F24, nombre de la aplicación Sunshine, pantalla completa e inicio automático son persistentes.
 - Incluye bandeja del sistema y mantiene disponibles todas las funciones originales de Moonlight.
 
+Estado de SIAC v0.2 en `siac/clipboard-ui`:
+
+- Añade portapapeles de texto, imágenes y archivos sobre un canal TLS separado, autorizado y limitado a LAN.
+- Mantiene una copia de archivos iniciada al volver con F10 y permite pegar desde el portapapeles normal de Windows.
+- Presenta computadoras, portapapeles y configuración en una interfaz de productividad en español.
+- La compilación automatizada y las pruebas Qt están documentadas; la operación real de portapapeles continúa pendiente de validación en dos PC Windows y no se declara aprobada todavía.
+
 Documentación del proyecto:
 
 - [Arquitectura](docs/SIAC_ARCHITECTURE.md)
@@ -21,6 +28,7 @@ Documentación del proyecto:
 - [Pruebas físicas de portapapeles](docs/SIAC_CLIPBOARD_TESTS.md)
 - [Limitaciones conocidas](docs/SIAC_LIMITATIONS.md)
 - [Registro de cambios](CHANGELOG_SIAC.md)
+- [Informe técnico detallado de SIAC v0.2](INFORME_SIAC_V02.md)
 
 La base y los cambios se distribuyen bajo GPLv3; consulte [LICENSE](LICENSE). No se almacenan contraseñas de Sunshine ni secretos SIAC en texto plano.
 

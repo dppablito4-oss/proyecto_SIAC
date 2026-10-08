@@ -80,19 +80,19 @@ Todos los mensajes contienen `type`, `version`, `originId` y, cuando corresponde
 | `fileChunk` | Bloque binario con ruta, desplazamiento y tamaño. |
 | `fileComplete` | Confirma que la preparación terminó. |
 | `cancel` | Cancela y elimina una preparación incompleta. |
-| `error` | Código estable y mensaje comprensible. |
+| `error` | Mensaje comprensible asociado al evento. |
 
 El receptor ignora `eventId` vistos y añade `application/x-siac-clipboard-event` al contenido aplicado. Así, la notificación local posterior no vuelve a enviarse y se corta el ciclo PC1 → PC2 → PC1.
 
 ## Texto e imágenes
 
 - Texto: UTF-8 en la carga, máximo inicial de 16 MiB.
-- Imagen: PNG en la carga, máximo inicial de 64 MiB.
+- Imagen: PNG en la carga, máximo inicial de 64 MiB y 64 megapíxeles decodificados.
 - Un PNG seleccionado en Explorer se trata como archivo; una imagen copiada desde un editor se trata como datos gráficos.
 
 ## Archivos y carpetas: implementación inicial
 
-La implementación v0.2 usa **preparación automática cifrada**, no OLE virtual bajo demanda:
+La implementación v0.2 usa **transferencia TLS con preparación automática en caché**, no OLE virtual bajo demanda. El caché está dentro del perfil del usuario, pero no añade cifrado en reposo propio:
 
 1. Explorer publica rutas locales (`CF_HDROP`, visibles en Qt como URLs locales).
 2. El origen recorre archivos y directorios sin seguir enlaces simbólicos.
@@ -161,6 +161,7 @@ Pendientes de hardware:
 
 ## Fuentes técnicas
 
-- Microsoft Learn: `AddClipboardFormatListener`, `WM_CLIPBOARDUPDATE` y operaciones de portapapeles.
-- Microsoft Learn: Shell Clipboard Formats, `CFSTR_FILEDESCRIPTOR` y `CFSTR_FILECONTENTS`.
-- Repositorio RustDesk: `libs/clipboard/README.md` y arquitectura Windows, consultados únicamente como referencia.
+- [Microsoft Learn: AddClipboardFormatListener](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-addclipboardformatlistener) y `WM_CLIPBOARDUPDATE`.
+- [Microsoft Learn: Clipboard Operations](https://learn.microsoft.com/en-us/windows/win32/dataxchg/clipboard-operations), incluida la representación diferida.
+- [RustDesk: arquitectura de `libs/clipboard`](https://github.com/rustdesk/rustdesk/blob/master/libs/clipboard/README.md) y [capa Windows](https://github.com/rustdesk/rustdesk/blob/master/libs/clipboard/src/windows/wf_cliprdr.c), consultadas únicamente como referencia conceptual.
+- [Licencia AGPL-3.0 de RustDesk](https://github.com/rustdesk/rustdesk/blob/master/LICENCE).
