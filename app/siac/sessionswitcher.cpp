@@ -424,7 +424,9 @@ void SessionSwitcher::sessionEnded(Session* session)
     }
     else {
         const quint64 token = m_ManagedSessionToken != 0 ? m_ManagedSessionToken : m_Transition.token();
-        failTransition(token, tr("The remote session ended. The local desktop is available and SIAC can be retried."));
+        // StreamSegue already presents the detailed Moonlight connection error.
+        // This path only restores the SIAC controller so the user can retry.
+        failTransition(token, {});
     }
 }
 
