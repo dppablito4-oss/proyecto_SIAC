@@ -178,6 +178,9 @@ SOURCES += \
     backend/computermanager.cpp \
     siac/sessionswitchplanner.cpp \
     siac/sessiontransitionstate.cpp \
+    siac/clipboard/clipboardprotocol.cpp \
+    siac/clipboard/clipboardpeer.cpp \
+    siac/clipboard/clipboardmanager.cpp \
     siac/sessionswitcher.cpp \
     backend/boxartmanager.cpp \
     backend/richpresencemanager.cpp \
@@ -225,6 +228,9 @@ HEADERS += \
     backend/computermanager.h \
     siac/sessionswitchplanner.h \
     siac/sessiontransitionstate.h \
+    siac/clipboard/clipboardprotocol.h \
+    siac/clipboard/clipboardpeer.h \
+    siac/clipboard/clipboardmanager.h \
     siac/sessionswitcher.h \
     backend/boxartmanager.h \
     backend/richpresencemanager.h \

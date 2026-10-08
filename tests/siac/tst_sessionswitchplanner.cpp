@@ -2,6 +2,7 @@
 
 #include "siac/sessionswitchplanner.h"
 #include "siac/sessiontransitionstate.h"
+#include "siac/clipboard/clipboardprotocol.h"
 
 class SessionSwitchPlannerTest : public QObject
 {
@@ -23,6 +24,10 @@ private slots:
     void selectsRunningPreferredOrDirectApplication();
     void skipsHostWithoutUsableApplication();
     void noUsableHostReturnsRecoverableLocalState();
+    void clipboardFramesHandleFragmentation();
+    void clipboardRejectsUnsafePaths();
+    void clipboardEventsAreDeduplicated();
+    void clipboardAuthorizationRejectsUnknownOrChangedPeers();
 };
 
 void SessionSwitchPlannerTest::neverConnectsToLocalComputer()
@@ -182,6 +187,79 @@ void SessionSwitchPlannerTest::noUsableHostReturnsRecoverableLocalState()
              static_cast<int>(SessionSwitchPlanner::Action::None));
     QVERIFY(state.fail(token));
     QVERIFY(state.canRequestNext());
+}
+
+void SessionSwitchPlannerTest::clipboardFramesHandleFragmentation()
+{
+    using namespace SiacClipboardProtocol;
+    QJsonObject header{{"type", "text"}, {"version", Version}, {"eventId", "event-1"}};
+    const QByteArray encoded = encodeFrame(header, QByteArray("hola\nPeru"));
+    QVERIFY(!encoded.isEmpty());
+
+    FrameParser parser;
+    QVector<Frame> frames;
+    QString error;
+    QVERIFY(parser.append(encoded.left(3), &frames, &error));
+    QVERIFY(frames.isEmpty());
+    QVERIFY(parser.append(encoded.mid(3, 7), &frames, &error));
+    QVERIFY(frames.isEmpty());
+    QVERIFY(parser.append(encoded.mid(10) + encoded, &frames, &error));
+    QCOMPARE(frames.size(), 2);
+    QCOMPARE(frames.at(0).header.value("type").toString(), QString("text"));
+    QCOMPARE(frames.at(0).payload, QByteArray("hola\nPeru"));
+    QCOMPARE(frames.at(1).payload, QByteArray("hola\nPeru"));
+}
+
+void SessionSwitchPlannerTest::clipboardRejectsUnsafePaths()
+{
+    using namespace SiacClipboardProtocol;
+    QString normalized;
+    QVERIFY(isSafeRelativePath("Carpeta/documento.txt", &normalized));
+    QCOMPARE(normalized, QString("Carpeta/documento.txt"));
+    QVERIFY(isSafeRelativePath(QString::fromUtf8("Diseño/Perú.txt")));
+    QVERIFY(!isSafeRelativePath("../secreto.txt"));
+    QVERIFY(!isSafeRelativePath("Carpeta/../../secreto.txt"));
+    QVERIFY(!isSafeRelativePath("C:/Windows/system.ini"));
+    QVERIFY(!isSafeRelativePath("Carpeta/archivo.txt:flujo"));
+    QVERIFY(!isSafeRelativePath("CON"));
+    QVERIFY(!isSafeRelativePath("Carpeta/nombre. "));
+
+    QSet<QString> used{QStringLiteral("informe.pdf")};
+    QCOMPARE(safeRootName("informe.pdf", used), QString("informe.pdf (2)"));
+}
+
+void SessionSwitchPlannerTest::clipboardEventsAreDeduplicated()
+{
+    using namespace SiacClipboardProtocol;
+    EventTracker tracker(2);
+    QVERIFY(tracker.remember("uno"));
+    QVERIFY(!tracker.remember("uno"));
+    QVERIFY(tracker.remember("dos"));
+    QVERIFY(tracker.remember("tres"));
+    QVERIFY(!tracker.contains("uno"));
+    QVERIFY(tracker.remember("uno"));
+}
+
+void SessionSwitchPlannerTest::clipboardAuthorizationRejectsUnknownOrChangedPeers()
+{
+    using namespace SiacClipboardProtocol;
+    QCOMPARE(static_cast<int>(authorizePeer("install-a", "pc-a", "cert-a",
+                                            "install-a", "pc-a", "cert-a")),
+             static_cast<int>(AuthorizationDecision::Authorized));
+    QCOMPARE(static_cast<int>(authorizePeer("install-a", "pc-a", "cert-a",
+                                            "install-b", "pc-a", "cert-a")),
+             static_cast<int>(AuthorizationDecision::UnknownPeer));
+    QCOMPARE(static_cast<int>(authorizePeer("install-a", "pc-a", "cert-a",
+                                            "install-a", "pc-a", "cert-b")),
+             static_cast<int>(AuthorizationDecision::CertificateChanged));
+    QCOMPARE(static_cast<int>(authorizePeer("install-a", "pc-a", "cert-a",
+                                            "install-a", "pc-b", "cert-a")),
+             static_cast<int>(AuthorizationDecision::ComputerChanged));
+
+    QVERIFY(!shouldAcceptContent(false, true, false));
+    QVERIFY(!shouldAcceptContent(true, false, false));
+    QVERIFY(shouldAcceptContent(true, true, false));
+    QVERIFY(shouldAcceptContent(true, false, true));
 }
 
 void SessionSwitchPlannerTest::worksWithAnyComputerAsLocal()
