@@ -3,6 +3,7 @@
 #include <QCryptographicHash>
 #include <QDataStream>
 #include <QDir>
+#include <QHash>
 #include <QJsonDocument>
 #include <QRegularExpression>
 #include <QtEndian>

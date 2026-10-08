@@ -6,6 +6,7 @@
 #include <QQueue>
 #include <QSet>
 #include <QString>
+#include <QStringList>
 #include <QVector>
 
 namespace SiacClipboardProtocol {
