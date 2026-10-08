@@ -82,7 +82,7 @@ Las verificaciones estáticas se conservan como control de integración, pero no
 - Comprobación estática local: 11/11 aserciones aprobadas.
 - `git diff --check`: aprobado.
 - Compilación local y Qt Test local: no disponibles porque este equipo no tiene Qt/qmake, MSVC ni Windows SDK.
-- Workflow del código corregido: pendiente de la publicación inicial de este incremento; su resultado se actualizará en este informe.
+- Workflow del código corregido, commit `ee7cdec2`, ejecución `37707269326`: aprobado. Windows 2025 con Qt 6.12 compiló x64, ejecutó Qt Test, compiló ARM64, generó paquetes y publicó artefactos. Los jobs macOS, AppImage y Steam Link también terminaron correctamente.
 - Streaming, teclado real y topología de dos/cuatro PC: no ejecutados en hardware y, por tanto, no aprobados.
 
 ## Checklist breve para dos PC

@@ -27,9 +27,10 @@ Fecha de la validación: 2026-10-07.
 | Repositorio y submódulos | Aprobada | `git submodule update --init --recursive` terminó correctamente. |
 | Espacios/blancos del parche | Aprobada | `git diff --check` sin errores. |
 | Integración estática SIAC | Aprobada | `tests/siac/source-integration.tests.ps1`: 11 aserciones aprobadas. |
-| Herramientas de compilación | Bloqueada por entorno | No existen qmake, MSVC, MSBuild, Windows SDK, CMake, Ninja ni compilador C++ en el equipo. |
-| Qt Test SIAC | No ejecutada | El proyecto de prueba está creado, pero falta Qt/qmake. |
-| Compilación Windows | No ejecutada | Faltan Qt 6.11+ y Visual Studio 2026/MSVC. |
+| Herramientas de compilación local | Bloqueada por entorno | No existen qmake, MSVC, MSBuild, Windows SDK, CMake, Ninja ni compilador C++ en el equipo local. |
+| Qt Test SIAC | Aprobada en CI | Ejecutada dentro del build x64 Windows del workflow `37707269326`. |
+| Compilación Windows x64 y ARM64 | Aprobada en CI | Commit `ee7cdec2`, Windows 2025 y Qt 6.12; empaquetado y artefactos completados. |
+| Workflow completo | Aprobado | Windows/macOS, AppImage y Steam Link finalizaron correctamente en `37707269326`. |
 
 No se declara aprobada ninguna prueba no ejecutada.
 
