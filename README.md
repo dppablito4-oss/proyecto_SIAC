@@ -16,6 +16,9 @@ Documentación del proyecto:
 - [Instalación de Sunshine y configuración de cuatro equipos](docs/SIAC_INSTALLATION.md)
 - [Compilación](docs/SIAC_BUILD.md)
 - [Pruebas y resultados](docs/SIAC_TESTS.md)
+- [Arquitectura del portapapeles v0.2](docs/SIAC_CLIPBOARD_ARCHITECTURE.md)
+- [Actualizar instalaciones a v0.2](docs/SIAC_UPDATE_V02.md)
+- [Pruebas físicas de portapapeles](docs/SIAC_CLIPBOARD_TESTS.md)
 - [Limitaciones conocidas](docs/SIAC_LIMITATIONS.md)
 - [Registro de cambios](CHANGELOG_SIAC.md)
 

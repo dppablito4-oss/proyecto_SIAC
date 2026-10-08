@@ -269,6 +269,34 @@ void SessionSwitcher::requestNext()
     }
 }
 
+void SessionSwitcher::connectToComputer(const QString& uuid)
+{
+    if (!m_Enabled) {
+        emit errorOccurred(tr("SIAC is disabled in Settings."));
+        return;
+    }
+    if (!m_Transition.canRequestNext()) {
+        return;
+    }
+    synchronizeHostOrder();
+    validateLocalComputerSelection();
+    if (m_LocalComputerUuid.isEmpty()) {
+        emit errorOccurred(tr("Select this physical computer as the local SIAC computer in Settings before switching."));
+        return;
+    }
+    if (uuid == m_LocalComputerUuid) {
+        returnLocal();
+        return;
+    }
+
+    QString reason;
+    if (!selectApplication(findComputer(uuid), nullptr, &reason)) {
+        emit errorOccurred(tr("This computer cannot start a SIAC desktop session: %1").arg(reason));
+        return;
+    }
+    requestComputer(uuid);
+}
+
 void SessionSwitcher::returnLocal()
 {
     m_DeferredLaunchTimer->stop();

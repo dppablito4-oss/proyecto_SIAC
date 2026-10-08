@@ -10,7 +10,7 @@ import SystemProperties 1.0
 
 Flickable {
     id: settingsPage
-    objectName: qsTr("Settings")
+    objectName: qsTr("Configuración")
 
     signal languageChanged()
 
@@ -239,6 +239,45 @@ Flickable {
                     text: qsTr("Start SIAC when signing in to Windows")
                     checked: ComputerManager.sessionSwitcher.autoStartEnabled
                     onToggled: ComputerManager.sessionSwitcher.autoStartEnabled = checked
+                }
+
+                Rectangle {
+                    width: parent.width
+                    height: 1
+                    color: "#475569"
+                }
+
+                Label {
+                    text: qsTr("Portapapeles compartido")
+                    font.bold: true
+                    font.pointSize: 12
+                }
+
+                CheckBox {
+                    width: parent.width
+                    text: qsTr("Activar sincronización con el escritorio remoto autorizado")
+                    checked: ComputerManager.clipboardManager.enabled
+                    onToggled: ComputerManager.clipboardManager.enabled = checked
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    color: "#7dd3fc"
+                    text: ComputerManager.clipboardManager.status
+                }
+
+                Label {
+                    width: parent.width
+                    wrapMode: Text.Wrap
+                    visible: ComputerManager.clipboardManager.lastError.length > 0
+                    color: "#fca5a5"
+                    text: ComputerManager.clipboardManager.lastError
+                }
+
+                Button {
+                    text: qsTr("Abrir administración del portapapeles")
+                    onClicked: stackView.push("qrc:/gui/ClipboardView.qml")
                 }
 
                 Label {

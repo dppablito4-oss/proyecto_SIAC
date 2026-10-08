@@ -15,10 +15,10 @@ CenteredGridView {
     id: pcGrid
     focus: true
     activeFocusOnTab: true
-    topMargin: 20
+    topMargin: 24
     bottomMargin: 5
-    cellWidth: 310; cellHeight: 330;
-    objectName: qsTr("Computers")
+    cellWidth: 370; cellHeight: 245;
+    objectName: qsTr("SIAC — Escritorios interconectados")
 
     Component.onCompleted: {
         // Don't show any highlighted item until interacting with them.
@@ -107,32 +107,33 @@ CenteredGridView {
     model: computerModel
 
     delegate: NavigableItemDelegate {
-        width: 300; height: 320;
+        width: 356; height: 228;
         grid: pcGrid
 
         property alias pcContextMenu : pcContextMenuLoader.item
 
         Image {
             id: pcIcon
-            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.left: parent.left
+            anchors.leftMargin: 22
+            anchors.top: parent.top
+            anchors.topMargin: 24
             source: "qrc:/res/desktop_windows-48px.svg"
             sourceSize {
-                width: 200
-                height: 200
+                width: 72
+                height: 72
             }
         }
 
         Image {
             // TODO: Tooltip
             id: stateIcon
-            anchors.horizontalCenter: pcIcon.horizontalCenter
-            anchors.verticalCenter: pcIcon.verticalCenter
-            anchors.verticalCenterOffset: !model.online ? -18 : -16
+            anchors.centerIn: pcIcon
             visible: !model.statusUnknown && (!model.online || !model.paired)
             source: !model.online ? "qrc:/res/warning_FILL1_wght300_GRAD200_opsz24.svg" : "qrc:/res/baseline-lock-24px.svg"
             sourceSize {
-                width: !model.online ? 75 : 70
-                height: !model.online ? 75 : 70
+                width: 38
+                height: 38
             }
         }
 
@@ -141,8 +142,8 @@ CenteredGridView {
             anchors.horizontalCenter: pcIcon.horizontalCenter
             anchors.verticalCenter: pcIcon.verticalCenter
             anchors.verticalCenterOffset: -15
-            width: 75
-            height: 75
+            width: 38
+            height: 38
             visible: model.statusUnknown
             running: visible
         }
@@ -150,14 +151,48 @@ CenteredGridView {
         Label {
             id: pcNameText
             text: model.name
-
-            width: parent.width
-            anchors.top: pcIcon.bottom
-            anchors.bottom: parent.bottom
-            font.pointSize: 36
-            horizontalAlignment: Text.AlignHCenter
+            anchors.left: pcIcon.right
+            anchors.leftMargin: 18
+            anchors.right: parent.right
+            anchors.rightMargin: 18
+            anchors.top: parent.top
+            anchors.topMargin: 24
+            font.pointSize: 20
+            font.bold: true
             wrapMode: Text.Wrap
             elide: Text.ElideRight
+        }
+
+        Label {
+            id: localLabel
+            anchors.left: pcNameText.left
+            anchors.top: pcNameText.bottom
+            anchors.topMargin: 7
+            text: model.uuid === ComputerManager.sessionSwitcher.localComputerUuid ?
+                      qsTr("Equipo local") : qsTr("Escritorio remoto")
+            color: model.uuid === ComputerManager.sessionSwitcher.localComputerUuid ? "#7dd3fc" : "#cbd5e1"
+        }
+
+        Label {
+            anchors.left: pcNameText.left
+            anchors.top: localLabel.bottom
+            anchors.topMargin: 5
+            text: model.statusUnknown ? qsTr("Comprobando…") :
+                  (!model.online ? qsTr("Desconectado") :
+                   (model.paired ? qsTr("Disponible · Emparejado") : qsTr("Disponible · Sin emparejar")))
+            color: !model.online ? "#fca5a5" : (model.paired ? "#86efac" : "#fcd34d")
+        }
+
+        Button {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            anchors.margins: 18
+            text: model.uuid === ComputerManager.sessionSwitcher.localComputerUuid ?
+                      qsTr("Volver a mi PC") :
+                      (model.paired ? qsTr("Conectar a pantalla completa") : qsTr("Emparejar"))
+            enabled: model.uuid === ComputerManager.sessionSwitcher.localComputerUuid || model.online
+            onClicked: parent.clicked()
         }
 
         Loader {
@@ -167,17 +202,13 @@ CenteredGridView {
                 id: pcContextMenu
                 initiator: pcContextMenuLoader.parent
                 MenuItem {
-                    text: qsTr("PC Status: %1").arg(model.online ? qsTr("Online") : qsTr("Offline"))
+                    text: qsTr("Estado: %1").arg(model.online ? qsTr("Disponible") : qsTr("Desconectado"))
                     font.bold: true
                     enabled: false
                 }
                 NavigableMenuItem {
-                    text: qsTr("View All Apps")
-                    onTriggered: {
-                        var component = Qt.createComponent("AppView.qml")
-                        var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name, "showHiddenGames": true})
-                        stackView.push(appView)
-                    }
+                    text: qsTr("Conectar al escritorio")
+                    onTriggered: ComputerManager.sessionSwitcher.connectToComputer(model.uuid)
                     visible: model.online && model.paired
                 }
                 NavigableMenuItem {
@@ -193,6 +224,15 @@ CenteredGridView {
                     }
                 }
 
+                NavigableMenuItem {
+                    text: qsTr("Aplicaciones avanzadas de Sunshine")
+                    onTriggered: {
+                        var component = Qt.createComponent("AppView.qml")
+                        var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name, "showHiddenGames": true})
+                        stackView.push(appView)
+                    }
+                    visible: model.online && model.paired
+                }
                 NavigableMenuItem {
                     text: qsTr("Rename PC")
                     onTriggered: {
@@ -227,6 +267,10 @@ CenteredGridView {
         }
 
         onClicked: {
+            if (model.uuid === ComputerManager.sessionSwitcher.localComputerUuid) {
+                ComputerManager.sessionSwitcher.returnLocal()
+                return
+            }
             if (model.online) {
                 if (!model.serverSupported) {
                     errorDialog.text = qsTr("The version of GeForce Experience on %1 is not supported by this build of Moonlight. You must update Moonlight to stream from %1.").arg(model.name)
@@ -234,10 +278,7 @@ CenteredGridView {
                     errorDialog.open()
                 }
                 else if (model.paired) {
-                    // go to game view
-                    var component = Qt.createComponent("AppView.qml")
-                    var appView = component.createObject(stackView, {"computerIndex": index, "objectName": model.name})
-                    stackView.push(appView)
+                    ComputerManager.sessionSwitcher.connectToComputer(model.uuid)
                 }
                 else {
                     var pin = computerModel.generatePinString()

@@ -170,7 +170,7 @@ void StreamingPreferences::reload()
                                                static_cast<int>(settings.value(SER_STARTWINDOWED, true).toBool() ? UIDisplayMode::UI_WINDOWED
                                                                                                                  : UIDisplayMode::UI_MAXIMIZED)).toInt());
     language = static_cast<Language>(settings.value(SER_LANGUAGE,
-                                                    static_cast<int>(Language::LANG_AUTO)).toInt());
+                                                    static_cast<int>(Language::LANG_ES)).toInt());
 
 
     // Perform default settings updates as required based on last default version

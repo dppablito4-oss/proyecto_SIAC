@@ -51,6 +51,7 @@ public:
     QString hotkeyError() const { return m_HotkeyError; }
 
     Q_INVOKABLE void requestNext();
+    Q_INVOKABLE void connectToComputer(const QString& uuid);
     Q_INVOKABLE void returnLocal();
     Q_INVOKABLE void sessionStarted(Session* session);
     Q_INVOKABLE void sessionEnded(Session* session);

@@ -472,6 +472,21 @@ ApplicationWindow {
             }
 
             NavigableToolButton {
+                id: clipboardButton
+                visible: !(stackView.currentItem instanceof ClipboardView)
+                iconSource: "qrc:/res/siac_clipboard.svg"
+                ToolTip.delay: 700
+                ToolTip.timeout: 3000
+                ToolTip.visible: hovered
+                ToolTip.text: qsTr("Portapapeles")
+                onClicked: navigateTo("qrc:/gui/ClipboardView.qml", ClipboardView)
+
+                Keys.onDownPressed: {
+                    stackView.currentItem.forceActiveFocus(Qt.TabFocus)
+                }
+            }
+
+            NavigableToolButton {
                 id: settingsButton
 
                 iconSource:  "qrc:/res/settings.svg"

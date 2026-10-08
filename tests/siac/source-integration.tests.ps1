@@ -33,6 +33,13 @@ Assert-True (-not $switcher.Contains('Win+Tab')) 'SIAC does not replace or synth
 $project = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot 'app\app.pro')
 Assert-True ($project.Contains('siac/sessionswitcher.cpp')) 'The SIAC switcher is included in the application build.'
 Assert-True ($project.Contains('widgets')) 'Qt Widgets is linked for the system tray implementation.'
+Assert-True ($project.Contains('siac/clipboard/clipboardmanager.cpp')) 'The clipboard agent is included in the application build.'
+
+$clipboard = Get-Content -Raw -LiteralPath (Join-Path $RepoRoot 'app\siac\clipboard\clipboardmanager.cpp')
+Assert-True ($clipboard.Contains('QSslSocket') -or (Get-Content -Raw -LiteralPath (Join-Path $RepoRoot 'app\siac\clipboard\clipboardpeer.cpp')).Contains('QSslSocket')) 'The clipboard channel uses TLS sockets.'
+Assert-True ($clipboard.Contains('MaxTransferSize')) 'Clipboard file transfers enforce a total-size limit.'
+Assert-True ($clipboard.Contains('QCryptographicHash::Sha256')) 'Received files are verified with SHA-256.'
+Assert-True ($clipboard.Contains('activeComputerUuid')) 'Clipboard peer selection follows the active SIAC computer.'
 
 Push-Location $RepoRoot
 try {
