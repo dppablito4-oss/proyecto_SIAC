@@ -33,7 +33,7 @@ Reglas principales:
 Es propiedad de `ComputerManager` y reutiliza sus objetos `NvComputer`; no crea un registro paralelo de hosts ni un backend central. Sus responsabilidades son:
 
 - cargar y guardar el grupo `siac` en `QSettings`;
-- detectar el host local por nombre o dirección y permitir corrección manual;
+- exigir que el usuario seleccione explícitamente el registro Sunshine del equipo físico local;
 - sincronizar y reordenar UUID de hosts;
 - registrar `Ctrl+Alt+F<n>` mediante `RegisterHotKey()` cuando Qt controla la interfaz;
 - coordinar el cambio secuencial cuando hay una sesión;
@@ -68,7 +68,9 @@ El atajo no sustituye ni sintetiza `Win+Tab`.
 
 ## Flujo de conexión
 
-`Host ordenado -> comprobar online/emparejado/apps -> elegir Desktop o aplicación activa -> Session::initialize -> Limelight -> ventana SDL a pantalla completa -> input/audio/vídeo existentes`
+`Host ordenado -> comprobar online/emparejado/aplicación utilizable -> elegir activa, Desktop o directLaunch -> Session::initialize -> Limelight -> ventana SDL a pantalla completa -> input/audio/vídeo existentes`
+
+`SessionTransitionState` mantiene un token monotónico durante cierre, lanzamiento diferido, creación QML, inicialización y conexión. F9 se ignora mientras la transición no termine. F10 incrementa el token, detiene el temporizador cancelable y cancela también una `Session` creada que todavía no alcanzó `Session::start()`.
 
 El MVP desconecta antes de conectar. Mantener sesiones preparadas no es seguro con el singleton global de Moonlight Common C, `Session::s_ActiveSession`, el semáforo de sesión y recursos únicos de SDL/decodificador.
 
@@ -83,7 +85,7 @@ El MVP desconecta antes de conectar. Mantener sesiones preparadas no es seguro c
 
 - La transición incluye cierre y nueva negociación; no se promete que sea instantánea.
 - El nombre `Desktop` debe coincidir con una aplicación Sunshine o cambiarse en Configuración.
-- Una detección local ambigua bloquea el cambio hasta que el usuario elija explícitamente este equipo.
+- El MVP requiere un registro Sunshine emparejado para el equipo local y su selección explícita. El planificador puro conserva soporte para un local sintético, pero esa capacidad no está conectada de extremo a extremo.
 - Estado online significa el último sondeo de Moonlight; un host puede caer entre el sondeo y la conexión. La ruta de error original permanece activa y el siguiente atajo sigue disponible.
 - La bandeja requiere un entorno Windows con bandeja disponible.
 - No se modificaron protocolo, decodificación, transporte ni autenticación.

@@ -66,14 +66,19 @@ ApplicationWindow {
     function launchSiacSession(session, appName) {
         var component = Qt.createComponent("StreamSegue.qml")
         if (component.status !== Component.Ready) {
-            streamSegueErrorDialog.text = qsTr("SIAC could not create the streaming view: %1").arg(component.errorString())
-            streamSegueErrorDialog.open()
+            var componentError = qsTr("SIAC could not create the streaming view: %1").arg(component.errorString())
+            ComputerManager.sessionSwitcher.sessionLaunchFailed(session, componentError)
             return
         }
         var segue = component.createObject(stackView, {
                                                "appName": appName,
                                                "session": session
                                            })
+        if (segue === null) {
+            var objectError = qsTr("SIAC could not instantiate the streaming view: %1").arg(component.errorString())
+            ComputerManager.sessionSwitcher.sessionLaunchFailed(session, objectError)
+            return
+        }
         stackView.push(segue)
     }
 

@@ -14,6 +14,7 @@ Item {
                                            qsTr("Starting %1...").arg(appName)
     property bool isResume : false
     property bool quitAfter : false
+    property bool siacCleanupStarted : false
 
     function stageStarting(stage)
     {
@@ -33,6 +34,7 @@ Item {
 
     function connectionStarted()
     {
+        ComputerManager.sessionSwitcher.sessionStarted(session)
         // Hide the UI contents so the user doesn't
         // see them briefly when we pop off the StackView
         stageSpinner.visible = false
@@ -97,14 +99,31 @@ Item {
 
     function sessionReadyForDeletion()
     {
+        if (siacCleanupStarted)
+            return
+        siacCleanupStarted = true
+
+        var finishedSession = session
+        ComputerManager.sessionSwitcher.sessionEnded(finishedSession)
+
         // Garbage collect the Session object since it's pretty heavyweight
         // and keeps other libraries (like SDL_TTF) around until it is deleted.
         session = null
         gc()
 
-        // If a SIAC shortcut requested another computer while SDL owned the
-        // event loop, cleanup is now complete and the next session may start.
-        ComputerManager.sessionSwitcher.sessionEnded()
+    }
+
+    Connections {
+        target: ComputerManager.sessionSwitcher
+        function onCancelPendingSessionRequested(pendingSession) {
+            if (pendingSession !== session || siacCleanupStarted)
+                return
+            startSessionTimer.stop()
+            streamLoader.active = false
+            session.cancelBeforeStart()
+            sessionFinished(0)
+            sessionReadyForDeletion()
+        }
     }
 
     StackView.onDeactivating: {
@@ -139,6 +158,8 @@ Item {
     Timer {
         id: startSessionTimer
         onTriggered: {
+            if (siacCleanupStarted)
+                return
             // Garbage collect QML stuff before we start streaming,
             // since we'll probably be streaming for a while and we
             // won't be able to GC during the stream.
@@ -155,6 +176,8 @@ Item {
         asynchronous: true
 
         onLoaded: {
+            if (siacCleanupStarted)
+                return
             // Set the hint text. We do this here rather than
             // in the hintText control itself to synchronize
             // with Session.exec() which requires no concurrent

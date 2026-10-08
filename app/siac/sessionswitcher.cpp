@@ -9,11 +9,8 @@
 #include <QCoreApplication>
 #include <QDir>
 #include <QGuiApplication>
-#include <QHostAddress>
-#include <QHostInfo>
 #include <QIcon>
 #include <QMenu>
-#include <QNetworkInterface>
 #include <QSettings>
 #include <QSystemTrayIcon>
 #include <QTimer>
@@ -43,7 +40,10 @@ SessionSwitcher::SessionSwitcher(ComputerManager* computerManager, QObject* pare
       m_ForceFullscreen(true),
       m_AutoStartEnabled(false),
       m_HotkeysRegistered(false),
-      m_SwitchInProgress(false),
+      m_PendingTransitionToken(0),
+      m_ManagedSession(nullptr),
+      m_ManagedSessionToken(0),
+      m_DeferredLaunchTimer(new QTimer(this)),
       m_TrayIcon(nullptr),
       m_TrayMenu(nullptr)
 {
@@ -52,7 +52,20 @@ SessionSwitcher::SessionSwitcher(ComputerManager* computerManager, QObject* pare
 
     loadSettings();
     synchronizeHostOrder();
-    detectLocalComputer();
+    validateLocalComputerSelection();
+
+    m_DeferredLaunchTimer->setSingleShot(true);
+    connect(m_DeferredLaunchTimer, &QTimer::timeout, this, [this]() {
+        const quint64 token = m_PendingTransitionToken;
+        if (m_PendingAction != PendingAction::ConnectRemote ||
+                !m_Transition.beginDeferredLaunch(token)) {
+            return;
+        }
+        const QString destination = m_PendingComputerUuid;
+        m_PendingAction = PendingAction::None;
+        m_PendingComputerUuid.clear();
+        launchComputer(destination, token);
+    });
 
     connect(m_ComputerManager, &ComputerManager::computerStateChanged,
             this, &SessionSwitcher::handleComputerStateChanged);
@@ -60,6 +73,9 @@ SessionSwitcher::SessionSwitcher(ComputerManager* computerManager, QObject* pare
     QCoreApplication::instance()->installNativeEventFilter(this);
     registerHotkeys();
     setupTrayIcon();
+    if (!m_StartupWarning.isEmpty()) {
+        QTimer::singleShot(0, this, [this]() { emit errorOccurred(m_StartupWarning); });
+    }
 }
 
 SessionSwitcher::~SessionSwitcher()
@@ -93,6 +109,13 @@ void SessionSwitcher::loadSettings()
     m_ForceFullscreen = settings.value(QStringLiteral("forceFullscreen"), true).toBool();
     m_AutoStartEnabled = settings.value(QStringLiteral("autoStart"), false).toBool();
     settings.endGroup();
+
+    if (!SessionSwitchPlanner::validHotkeys(m_NextFunctionKey, m_LocalFunctionKey)) {
+        m_NextFunctionKey = 9;
+        m_LocalFunctionKey = 10;
+        m_StartupWarning = tr("The saved SIAC shortcuts were invalid or identical and were reset to Ctrl+Alt+F9 and Ctrl+Alt+F10. You can correct them in Settings.");
+        saveSettings();
+    }
 }
 
 void SessionSwitcher::saveSettings()
@@ -133,41 +156,19 @@ void SessionSwitcher::synchronizeHostOrder()
     }
 }
 
-void SessionSwitcher::detectLocalComputer()
+void SessionSwitcher::validateLocalComputerSelection()
 {
     if (!m_LocalComputerUuid.isEmpty() && findComputer(m_LocalComputerUuid)) {
         return;
     }
 
-    const QString previousUuid = m_LocalComputerUuid;
+    if (m_LocalComputerUuid.isEmpty()) {
+        return;
+    }
+
     m_LocalComputerUuid.clear();
-
-    const QString localName = QHostInfo::localHostName();
-    const QList<QHostAddress> localAddresses = QNetworkInterface::allAddresses();
-    QString detectedUuid;
-
-    for (NvComputer* computer : m_ComputerManager->getComputers()) {
-        QReadLocker lock(&computer->lock);
-        const bool nameMatches = computer->name.compare(localName, Qt::CaseInsensitive) == 0;
-        const bool addressMatches = localAddresses.contains(QHostAddress(computer->localAddress.address())) ||
-                localAddresses.contains(QHostAddress(computer->manualAddress.address()));
-        if (nameMatches || addressMatches) {
-            if (!detectedUuid.isEmpty()) {
-                if (previousUuid != m_LocalComputerUuid) {
-                    saveSettings();
-                }
-                return; // Ambiguous: require explicit selection.
-            }
-            detectedUuid = computer->uuid;
-        }
-    }
-
-    if (!detectedUuid.isEmpty()) {
-        m_LocalComputerUuid = detectedUuid;
-    }
-    if (previousUuid != m_LocalComputerUuid) {
-        saveSettings();
-    }
+    saveSettings();
+    m_StartupWarning = tr("The previously selected local computer no longer exists. Select this physical computer explicitly before using SIAC.");
 }
 
 QStringList SessionSwitcher::orderedHostNames() const
@@ -197,15 +198,42 @@ NvComputer* SessionSwitcher::findComputer(const QString& uuid) const
     return nullptr;
 }
 
-bool SessionSwitcher::isComputerAvailable(NvComputer* computer) const
+bool SessionSwitcher::selectApplication(NvComputer* computer, NvApp* selectedApp,
+                                        QString* failureReason) const
 {
     if (!computer) {
+        if (failureReason) *failureReason = tr("The host no longer exists.");
         return false;
     }
     QReadLocker lock(&computer->lock);
-    return computer->state == NvComputer::CS_ONLINE &&
-            computer->pairState == NvComputer::PS_PAIRED &&
-            !computer->appList.isEmpty();
+    if (computer->state != NvComputer::CS_ONLINE) {
+        if (failureReason) *failureReason = tr("The host is offline.");
+        return false;
+    }
+    if (computer->pairState != NvComputer::PS_PAIRED) {
+        if (failureReason) *failureReason = tr("The host is not paired.");
+        return false;
+    }
+
+    QVector<SessionSwitchPlanner::ApplicationCandidate> candidates;
+    candidates.reserve(computer->appList.size());
+    for (const NvApp& app : computer->appList) {
+        candidates.append({app.id, app.name, app.directLaunch,
+                           app.id != 0 && !app.name.isNull()});
+    }
+    const int index = SessionSwitchPlanner::selectApplication(
+                candidates, computer->currentGameId, m_DesktopAppName);
+    if (index < 0) {
+        if (failureReason) {
+            *failureReason = tr("The host has no running, '%1', or directly launchable application.")
+                    .arg(m_DesktopAppName);
+        }
+        return false;
+    }
+    if (selectedApp) {
+        *selectedApp = computer->appList.at(index);
+    }
+    return true;
 }
 
 void SessionSwitcher::requestNext()
@@ -214,27 +242,20 @@ void SessionSwitcher::requestNext()
         emit errorOccurred(tr("SIAC is disabled in Settings."));
         return;
     }
-    if (m_SwitchInProgress) {
+    if (!m_Transition.canRequestNext()) {
         return;
     }
 
     synchronizeHostOrder();
-    detectLocalComputer();
+    validateLocalComputerSelection();
 
     if (m_LocalComputerUuid.isEmpty()) {
         emit errorOccurred(tr("Select this physical computer as the local SIAC computer in Settings before switching."));
         return;
     }
 
-    QSet<QString> available;
-    for (const QString& uuid : m_HostOrder) {
-        if (uuid != m_LocalComputerUuid && isComputerAvailable(findComputer(uuid))) {
-            available.insert(uuid);
-        }
-    }
-
     const QString current = m_ActiveComputerUuid.isEmpty() ? m_LocalComputerUuid : m_ActiveComputerUuid;
-    const auto result = SessionSwitchPlanner::next(m_HostOrder, m_LocalComputerUuid, current, available);
+    const auto result = nextUsableComputer(current);
     if (result.action == SessionSwitchPlanner::Action::ReturnLocal) {
         returnLocal();
     }
@@ -242,22 +263,43 @@ void SessionSwitcher::requestNext()
         requestComputer(result.computerUuid);
     }
     else {
-        emit errorOccurred(tr("No paired and online SIAC computer is available."));
+        emit errorOccurred(tr("No remote SIAC computer has a usable application. The local desktop remains active."));
     }
 }
 
 void SessionSwitcher::returnLocal()
 {
+    m_DeferredLaunchTimer->stop();
+    m_Transition.cancelToLocal();
+    m_PendingTransitionToken = m_Transition.token();
     m_PendingComputerUuid.clear();
+    m_AttemptedComputerUuids.clear();
+    m_PendingAction = PendingAction::ReturnLocal;
+
     if (Session::get()) {
-        m_PendingAction = PendingAction::ReturnLocal;
-        m_SwitchInProgress = true;
         Session::get()->interrupt();
         return;
     }
 
+    if (m_ManagedSession) {
+        m_ManagedSession->cancelBeforeStart();
+        emit cancelPendingSessionRequested(m_ManagedSession);
+        return;
+    }
+
+    finishReturnLocal();
+}
+
+void SessionSwitcher::finishReturnLocal()
+{
+    m_DeferredLaunchTimer->stop();
     m_PendingAction = PendingAction::None;
-    m_SwitchInProgress = false;
+    m_PendingComputerUuid.clear();
+    m_PendingTransitionToken = 0;
+    m_ManagedSession = nullptr;
+    m_ManagedSessionToken = 0;
+    m_AttemptedComputerUuids.clear();
+    m_Transition.finishLocal();
     if (!m_ActiveComputerUuid.isEmpty()) {
         m_ActiveComputerUuid.clear();
         emit activeComputerChanged();
@@ -274,97 +316,149 @@ void SessionSwitcher::requestComputer(const QString& uuid)
         return;
     }
 
-    if (Session::get()) {
+    const bool hasActiveSession = Session::get() != nullptr;
+    const quint64 token = m_Transition.beginRemoteSwitch(hasActiveSession);
+    if (token == 0) {
+        return;
+    }
+    m_PendingTransitionToken = token;
+    m_AttemptedComputerUuids.clear();
+
+    if (hasActiveSession) {
         m_PendingAction = PendingAction::ConnectRemote;
         m_PendingComputerUuid = uuid;
-        m_SwitchInProgress = true;
         Session::get()->interrupt();
     }
     else {
-        launchComputer(uuid);
+        launchComputer(uuid, token);
     }
 }
 
-void SessionSwitcher::launchComputer(const QString& uuid)
+SessionSwitchPlanner::Result SessionSwitcher::nextUsableComputer(const QString& currentUuid) const
 {
+    QSet<QString> available;
+    for (const QString& uuid : m_HostOrder) {
+        if (uuid != m_LocalComputerUuid && !m_AttemptedComputerUuids.contains(uuid) &&
+                selectApplication(findComputer(uuid), nullptr)) {
+            available.insert(uuid);
+        }
+    }
+    return SessionSwitchPlanner::next(m_HostOrder, m_LocalComputerUuid, currentUuid, available);
+}
+
+void SessionSwitcher::launchComputer(const QString& uuid, quint64 token)
+{
+    if (!m_Transition.isCurrent(token) ||
+            m_Transition.phase() != SessionTransitionState::Phase::LaunchRequested) {
+        return;
+    }
+
+    if (uuid.isEmpty() || uuid == m_LocalComputerUuid) {
+        finishReturnLocal();
+        return;
+    }
+
+    m_AttemptedComputerUuids.insert(uuid);
     NvComputer* computer = findComputer(uuid);
-    if (!isComputerAvailable(computer)) {
-        m_SwitchInProgress = false;
-        emit errorOccurred(tr("The selected SIAC computer is offline, unpaired, or has no applications."));
-        return;
-    }
-
     NvApp selectedApp;
-    bool found = false;
-    {
-        QReadLocker lock(&computer->lock);
-
-        if (computer->currentGameId != 0) {
-            for (const NvApp& app : computer->appList) {
-                if (app.id == computer->currentGameId) {
-                    selectedApp = app;
-                    found = true;
-                    break;
-                }
-            }
+    QString failureReason;
+    if (!selectApplication(computer, &selectedApp, &failureReason)) {
+        const auto next = nextUsableComputer(uuid);
+        if (next.action == SessionSwitchPlanner::Action::ConnectRemote) {
+            launchComputer(next.computerUuid, token);
         }
-
-        if (!found) {
-            for (const NvApp& app : computer->appList) {
-                if (app.name.compare(m_DesktopAppName, Qt::CaseInsensitive) == 0) {
-                    selectedApp = app;
-                    found = true;
-                    break;
-                }
-            }
+        else if (next.action == SessionSwitchPlanner::Action::ReturnLocal) {
+            finishReturnLocal();
         }
-
-        if (!found) {
-            for (const NvApp& app : computer->appList) {
-                if (app.directLaunch) {
-                    selectedApp = app;
-                    found = true;
-                    break;
-                }
-            }
+        else {
+            failTransition(token, tr("No remote SIAC computer is usable (%1). The local desktop remains available.")
+                           .arg(failureReason));
         }
-    }
-
-    if (!found) {
-        m_SwitchInProgress = false;
-        emit errorOccurred(tr("Application '%1' was not found on the selected host.").arg(m_DesktopAppName));
         return;
     }
 
+    Session* session = new Session(computer, selectedApp, nullptr, m_ForceFullscreen, false);
+    if (!m_Transition.markSessionCreated(token)) {
+        session->deleteLater();
+        return;
+    }
+    m_ManagedSession = session;
+    m_ManagedSessionToken = token;
     m_ActiveComputerUuid = uuid;
-    m_SwitchInProgress = false;
     emit activeComputerChanged();
     updateTrayMenu();
-    emit sessionRequested(new Session(computer, selectedApp, nullptr, m_ForceFullscreen, false), selectedApp.name);
+    emit sessionRequested(session, selectedApp.name);
 }
 
-void SessionSwitcher::sessionEnded()
+void SessionSwitcher::sessionStarted(Session* session)
 {
+    if (session == m_ManagedSession) {
+        m_Transition.markConnected(m_ManagedSessionToken);
+    }
+}
+
+void SessionSwitcher::scheduleDeferredLaunch(quint64 token)
+{
+    if (!m_Transition.markLaunchDeferred(token)) {
+        return;
+    }
+    m_DeferredLaunchTimer->start(0);
+}
+
+void SessionSwitcher::sessionEnded(Session* session)
+{
+    if (session == m_ManagedSession) {
+        m_ManagedSession = nullptr;
+        m_ManagedSessionToken = 0;
+    }
+
     const PendingAction pendingAction = m_PendingAction;
-    const QString pendingComputer = m_PendingComputerUuid;
-    m_PendingAction = PendingAction::None;
-    m_PendingComputerUuid.clear();
-    m_SwitchInProgress = false;
 
     if (pendingAction == PendingAction::ReturnLocal) {
-        m_ActiveComputerUuid.clear();
-        emit activeComputerChanged();
-        emit returnedToLocal();
-        emit showLocalDesktopRequested();
-        updateTrayMenu();
+        finishReturnLocal();
     }
     else if (pendingAction == PendingAction::ConnectRemote) {
-        QTimer::singleShot(0, this, [this, pendingComputer]() { launchComputer(pendingComputer); });
+        scheduleDeferredLaunch(m_PendingTransitionToken);
     }
     else {
+        const quint64 token = m_ManagedSessionToken != 0 ? m_ManagedSessionToken : m_Transition.token();
+        failTransition(token, tr("The remote session ended. The local desktop is available and SIAC can be retried."));
+    }
+}
+
+void SessionSwitcher::sessionLaunchFailed(Session* session, const QString& reason)
+{
+    if (session != m_ManagedSession) {
+        if (session) session->deleteLater();
+        return;
+    }
+    const quint64 token = m_ManagedSessionToken;
+    m_ManagedSession = nullptr;
+    m_ManagedSessionToken = 0;
+    session->deleteLater();
+    failTransition(token, reason);
+}
+
+void SessionSwitcher::failTransition(quint64 token, const QString& message)
+{
+    if (!m_Transition.fail(token)) {
+        return;
+    }
+    m_DeferredLaunchTimer->stop();
+    m_PendingAction = PendingAction::None;
+    m_PendingComputerUuid.clear();
+    m_PendingTransitionToken = 0;
+    m_ManagedSession = nullptr;
+    m_ManagedSessionToken = 0;
+    m_AttemptedComputerUuids.clear();
+    if (!m_ActiveComputerUuid.isEmpty()) {
         m_ActiveComputerUuid.clear();
         emit activeComputerChanged();
-        updateTrayMenu();
+    }
+    emit showLocalDesktopRequested();
+    updateTrayMenu();
+    if (!message.isEmpty()) {
+        emit errorOccurred(message);
     }
 }
 
@@ -402,6 +496,10 @@ void SessionSwitcher::setEnabled(bool enabled)
 
 void SessionSwitcher::setLocalComputerUuid(const QString& uuid)
 {
+    if (uuid.isEmpty() || !findComputer(uuid)) {
+        emit errorOccurred(tr("Select an existing paired Sunshine host as this physical computer."));
+        return;
+    }
     if (m_LocalComputerUuid == uuid) return;
     m_LocalComputerUuid = uuid;
     saveSettings();
@@ -419,8 +517,14 @@ void SessionSwitcher::setDesktopAppName(const QString& name)
 
 void SessionSwitcher::setNextFunctionKey(int functionKey)
 {
-    functionKey = qBound(1, functionKey, 24);
     if (m_NextFunctionKey == functionKey) return;
+    if (!SessionSwitchPlanner::validHotkeys(functionKey, m_LocalFunctionKey)) {
+        m_HotkeyError = tr("The next and return shortcuts must use different function keys from F1 through F24.");
+        emit hotkeyStatusChanged();
+        emit errorOccurred(m_HotkeyError);
+        emit configurationChanged();
+        return;
+    }
     m_NextFunctionKey = functionKey;
     saveSettings();
     registerHotkeys();
@@ -429,8 +533,14 @@ void SessionSwitcher::setNextFunctionKey(int functionKey)
 
 void SessionSwitcher::setLocalFunctionKey(int functionKey)
 {
-    functionKey = qBound(1, functionKey, 24);
     if (m_LocalFunctionKey == functionKey) return;
+    if (!SessionSwitchPlanner::validHotkeys(m_NextFunctionKey, functionKey)) {
+        m_HotkeyError = tr("The next and return shortcuts must use different function keys from F1 through F24.");
+        emit hotkeyStatusChanged();
+        emit errorOccurred(m_HotkeyError);
+        emit configurationChanged();
+        return;
+    }
     m_LocalFunctionKey = functionKey;
     saveSettings();
     registerHotkeys();
@@ -478,7 +588,7 @@ void SessionSwitcher::handleComputerStateChanged(NvComputer*)
     const QStringList oldOrder = m_HostOrder;
     const QString oldLocalComputerUuid = m_LocalComputerUuid;
     synchronizeHostOrder();
-    detectLocalComputer();
+    validateLocalComputerSelection();
     if (oldOrder != m_HostOrder || oldLocalComputerUuid != m_LocalComputerUuid) {
         saveSettings();
         emit configurationChanged();
@@ -499,6 +609,12 @@ void SessionSwitcher::registerHotkeys()
 {
     unregisterHotkeys();
     m_HotkeyError.clear();
+
+    if (!SessionSwitchPlanner::validHotkeys(m_NextFunctionKey, m_LocalFunctionKey)) {
+        m_HotkeyError = tr("The SIAC shortcuts must use different function keys from F1 through F24. Correct them in Settings.");
+        emit hotkeyStatusChanged();
+        return;
+    }
 
 #ifdef Q_OS_WIN32
     if (m_Enabled) {

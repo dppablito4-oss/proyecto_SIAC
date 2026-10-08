@@ -197,6 +197,25 @@ pushd %BUILD_FOLDER%
 if !ERRORLEVEL! NEQ 0 goto Error
 popd
 
+rem SIAC controller/planner tests are native and can only run for the x64 host build.
+if /I "%ARCH%" EQU "x64" (
+    set SIAC_TEST_FOLDER=%BUILD_ROOT%\siac-tests-%BUILD_CONFIG%
+    rmdir /s /q !SIAC_TEST_FOLDER!
+    mkdir !SIAC_TEST_FOLDER!
+    pushd !SIAC_TEST_FOLDER!
+    %QMAKE_CMD% "CONFIG+=%BUILD_CONFIG%" %SOURCE_ROOT%\tests\siac\siac-tests.pro
+    if !ERRORLEVEL! NEQ 0 goto Error
+    !JOM_CMD! %BUILD_CONFIG%
+    if !ERRORLEVEL! NEQ 0 goto Error
+    if exist %BUILD_CONFIG%\tst_sessionswitchplanner.exe (
+        %BUILD_CONFIG%\tst_sessionswitchplanner.exe
+    ) else (
+        tst_sessionswitchplanner.exe
+    )
+    if !ERRORLEVEL! NEQ 0 goto Error
+    popd
+)
+
 echo Saving PDBs
 for /r "%BUILD_FOLDER%" %%f in (*.pdb) do (
     copy "%%f" %SYMBOLS_FOLDER%

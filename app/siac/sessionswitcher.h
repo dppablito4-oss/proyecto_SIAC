@@ -1,6 +1,7 @@
 #pragma once
 
 #include "sessionswitchplanner.h"
+#include "sessiontransitionstate.h"
 
 #include <QAbstractNativeEventFilter>
 #include <QObject>
@@ -11,6 +12,8 @@ class NvComputer;
 class Session;
 class QMenu;
 class QSystemTrayIcon;
+class QTimer;
+class NvApp;
 
 class SessionSwitcher : public QObject, public QAbstractNativeEventFilter
 {
@@ -49,7 +52,9 @@ public:
 
     Q_INVOKABLE void requestNext();
     Q_INVOKABLE void returnLocal();
-    Q_INVOKABLE void sessionEnded();
+    Q_INVOKABLE void sessionStarted(Session* session);
+    Q_INVOKABLE void sessionEnded(Session* session);
+    Q_INVOKABLE void sessionLaunchFailed(Session* session, const QString& reason);
     Q_INVOKABLE bool hasPendingAction() const;
     Q_INVOKABLE void moveHost(int index, int offset);
     Q_INVOKABLE void setLocalComputerAt(int index);
@@ -69,6 +74,7 @@ public:
 
 signals:
     void sessionRequested(Session* session, QString appName);
+    void cancelPendingSessionRequested(Session* pendingSession);
     void showUiRequested();
     void showLocalDesktopRequested();
     void openSettingsRequested();
@@ -88,11 +94,16 @@ private:
     void loadSettings();
     void saveSettings();
     void synchronizeHostOrder();
-    void detectLocalComputer();
+    void validateLocalComputerSelection();
     void requestComputer(const QString& uuid);
-    void launchComputer(const QString& uuid);
+    void launchComputer(const QString& uuid, quint64 token);
+    void scheduleDeferredLaunch(quint64 token);
+    void finishReturnLocal();
+    void failTransition(quint64 token, const QString& message);
+    SessionSwitchPlanner::Result nextUsableComputer(const QString& currentUuid) const;
     NvComputer* findComputer(const QString& uuid) const;
-    bool isComputerAvailable(NvComputer* computer) const;
+    bool selectApplication(NvComputer* computer, NvApp* selectedApp,
+                           QString* failureReason = nullptr) const;
     void registerHotkeys();
     void unregisterHotkeys();
     void setupTrayIcon();
@@ -106,6 +117,7 @@ private:
     QString m_ActiveComputerUuid;
     QString m_DesktopAppName;
     QString m_HotkeyError;
+    QString m_StartupWarning;
     QString m_PendingComputerUuid;
     PendingAction m_PendingAction;
     int m_NextFunctionKey;
@@ -114,7 +126,12 @@ private:
     bool m_ForceFullscreen;
     bool m_AutoStartEnabled;
     bool m_HotkeysRegistered;
-    bool m_SwitchInProgress;
+    SessionTransitionState m_Transition;
+    quint64 m_PendingTransitionToken;
+    Session* m_ManagedSession;
+    quint64 m_ManagedSessionToken;
+    QSet<QString> m_AttemptedComputerUuids;
+    QTimer* m_DeferredLaunchTimer;
     QSystemTrayIcon* m_TrayIcon;
     QMenu* m_TrayMenu;
 };

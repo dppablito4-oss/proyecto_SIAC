@@ -8,7 +8,9 @@ INCLUDEPATH += ../../app
 
 SOURCES += \
     tst_sessionswitchplanner.cpp \
-    ../../app/siac/sessionswitchplanner.cpp
+    ../../app/siac/sessionswitchplanner.cpp \
+    ../../app/siac/sessiontransitionstate.cpp
 
 HEADERS += \
-    ../../app/siac/sessionswitchplanner.h
+    ../../app/siac/sessionswitchplanner.h \
+    ../../app/siac/sessiontransitionstate.h

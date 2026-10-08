@@ -67,3 +67,37 @@ SessionSwitchPlanner::ShortcutAction SessionSwitchPlanner::matchShortcut(
     }
     return ShortcutAction::Forward;
 }
+
+bool SessionSwitchPlanner::validHotkeys(int nextFunctionKey, int localFunctionKey)
+{
+    return nextFunctionKey >= 1 && nextFunctionKey <= 24 &&
+            localFunctionKey >= 1 && localFunctionKey <= 24 &&
+            nextFunctionKey != localFunctionKey;
+}
+
+int SessionSwitchPlanner::selectApplication(
+        const QVector<ApplicationCandidate>& applications,
+        int currentGameId, const QString& preferredName)
+{
+    if (currentGameId != 0) {
+        for (int i = 0; i < applications.size(); ++i) {
+            if (applications.at(i).valid && applications.at(i).id == currentGameId) {
+                return i;
+            }
+        }
+    }
+
+    for (int i = 0; i < applications.size(); ++i) {
+        if (applications.at(i).valid &&
+                applications.at(i).name.compare(preferredName, Qt::CaseInsensitive) == 0) {
+            return i;
+        }
+    }
+
+    for (int i = 0; i < applications.size(); ++i) {
+        if (applications.at(i).valid && applications.at(i).directLaunch) {
+            return i;
+        }
+    }
+    return -1;
+}

@@ -177,6 +177,7 @@ SOURCES += \
     backend/nvpairingmanager.cpp \
     backend/computermanager.cpp \
     siac/sessionswitchplanner.cpp \
+    siac/sessiontransitionstate.cpp \
     siac/sessionswitcher.cpp \
     backend/boxartmanager.cpp \
     backend/richpresencemanager.cpp \
@@ -223,6 +224,7 @@ HEADERS += \
     backend/nvpairingmanager.h \
     backend/computermanager.h \
     siac/sessionswitchplanner.h \
+    siac/sessiontransitionstate.h \
     siac/sessionswitcher.h \
     backend/boxartmanager.h \
     backend/richpresencemanager.h \

@@ -3,6 +3,7 @@
 #include <QString>
 #include <QStringList>
 #include <QSet>
+#include <QVector>
 
 class SessionSwitchPlanner
 {
@@ -27,6 +28,14 @@ public:
         ReturnLocal,
     };
 
+    struct ApplicationCandidate
+    {
+        int id = 0;
+        QString name;
+        bool directLaunch = false;
+        bool valid = true;
+    };
+
     static Result next(const QStringList& orderedComputerUuids,
                        const QString& localComputerUuid,
                        const QString& activeComputerUuid,
@@ -35,4 +44,8 @@ public:
     static ShortcutAction matchShortcut(int functionKey, bool control, bool alt,
                                         bool shift, bool meta, int nextFunctionKey,
                                         int localFunctionKey);
+
+    static bool validHotkeys(int nextFunctionKey, int localFunctionKey);
+    static int selectApplication(const QVector<ApplicationCandidate>& applications,
+                                 int currentGameId, const QString& preferredName);
 };

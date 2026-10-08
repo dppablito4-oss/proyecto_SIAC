@@ -10,9 +10,15 @@ Fecha de la validación: 2026-10-07.
 2. el orden configurado se respeta;
 3. equipos no disponibles se omiten;
 4. después del último remoto se vuelve al local;
-5. el algoritmo admite un local sin registro Sunshine (aunque el producto exige selección explícita por seguridad);
+5. el planificador puro admite un local sintético, identificado expresamente como capacidad no integrada en el MVP;
 6. cualquiera de cuatro equipos puede ser el local;
-7. Ctrl+Alt+F9/F10 se clasifica como acción local y combinaciones distintas se reenvían.
+7. Ctrl+Alt+F9/F10 se clasifica como acción local y combinaciones distintas se reenvían;
+8. F9 repetido durante creación/conexión produce una sola transición;
+9. F10 invalida un lanzamiento diferido y una sesión creada todavía no activa;
+10. un fallo de conexión o creación deja reintentar;
+11. atajos iguales o fuera de F1-F24 se rechazan;
+12. la selección de aplicación prioriza sesión activa, nombre configurado y `directLaunch`;
+13. hosts sin aplicación utilizable se omiten y la ausencia total recupera el estado local.
 
 ## Resultados ejecutados
 

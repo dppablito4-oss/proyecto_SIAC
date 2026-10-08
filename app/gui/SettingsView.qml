@@ -120,7 +120,7 @@ Flickable {
                 Label {
                     width: parent.width
                     wrapMode: Text.Wrap
-                    text: qsTr("Local computer (SIAC never connects to this host):")
+                    text: qsTr("Required: explicitly select this physical computer. It must be a paired Sunshine host and SIAC never connects to it:")
                 }
 
                 ComboBox {
@@ -193,12 +193,15 @@ Flickable {
                         text: qsTr("Next computer: Ctrl+Alt+F")
                     }
                     SpinBox {
+                        id: siacNextFunctionKey
                         from: 1
                         to: 24
                         value: ComputerManager.sessionSwitcher.nextFunctionKey
                         onValueChanged: {
-                            if (ComputerManager.sessionSwitcher.nextFunctionKey !== value)
+                            if (ComputerManager.sessionSwitcher.nextFunctionKey !== value) {
                                 ComputerManager.sessionSwitcher.nextFunctionKey = value
+                                value = ComputerManager.sessionSwitcher.nextFunctionKey
+                            }
                         }
                     }
                 }
@@ -211,12 +214,15 @@ Flickable {
                         text: qsTr("Return local: Ctrl+Alt+F")
                     }
                     SpinBox {
+                        id: siacLocalFunctionKey
                         from: 1
                         to: 24
                         value: ComputerManager.sessionSwitcher.localFunctionKey
                         onValueChanged: {
-                            if (ComputerManager.sessionSwitcher.localFunctionKey !== value)
+                            if (ComputerManager.sessionSwitcher.localFunctionKey !== value) {
                                 ComputerManager.sessionSwitcher.localFunctionKey = value
+                                value = ComputerManager.sessionSwitcher.localFunctionKey
+                            }
                         }
                     }
                 }

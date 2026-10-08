@@ -105,6 +105,7 @@ public:
     Q_INVOKABLE bool initialize(QQuickWindow* qtWindow);
     Q_INVOKABLE void start();
     Q_INVOKABLE void interrupt();
+    Q_INVOKABLE void cancelBeforeStart();
     Q_PROPERTY(QStringList launchWarnings MEMBER m_LaunchWarnings NOTIFY launchWarningsChanged);
 
     static
@@ -266,6 +267,9 @@ private:
     int m_FlushingWindowEventsRef;
     QStringList m_LaunchWarnings;
     bool m_ShouldExit;
+    bool m_Initialized;
+    bool m_StartRequested;
+    bool m_CancelledBeforeStart;
 
     bool m_AsyncConnectionSuccess;
     int m_PortTestResults;

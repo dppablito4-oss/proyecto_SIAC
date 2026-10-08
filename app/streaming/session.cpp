@@ -581,6 +581,9 @@ Session::Session(NvComputer* computer, NvApp& app, StreamingPreferences *prefere
       m_MouseEmulationRefCount(0),
       m_FlushingWindowEventsRef(0),
       m_ShouldExit(false),
+      m_Initialized(false),
+      m_StartRequested(false),
+      m_CancelledBeforeStart(false),
       m_AsyncConnectionSuccess(false),
       m_PortTestResults(0),
       m_OpusDecoder(nullptr),
@@ -600,6 +603,9 @@ Session::~Session()
 
 bool Session::initialize(QQuickWindow* qtWindow)
 {
+    if (m_CancelledBeforeStart) {
+        return false;
+    }
     m_QtWindow = qtWindow;
 
 #ifdef Q_OS_DARWIN
@@ -959,6 +965,7 @@ bool Session::initialize(QQuickWindow* qtWindow)
         return false;
     }
 
+    m_Initialized = true;
     return true;
 }
 
@@ -1751,6 +1758,11 @@ void Session::setShouldExit(bool quitHostApp)
 
 void Session::start()
 {
+    m_StartRequested = true;
+    if (m_CancelledBeforeStart) {
+        return;
+    }
+
     // Wait for any old session to finish cleanup
     s_ActiveSessionSemaphore.acquire();
 
@@ -1766,6 +1778,20 @@ void Session::start()
     QObject::connect(thread, &QThread::finished, this, &Session::exec);
     QObject::connect(thread, &QThread::finished, thread, &QThread::deleteLater);
     thread->start();
+}
+
+void Session::cancelBeforeStart()
+{
+    if (m_StartRequested) {
+        interrupt();
+        return;
+    }
+
+    m_CancelledBeforeStart = true;
+    if (m_Initialized) {
+        SDL_QuitSubSystem(SDL_INIT_VIDEO);
+        m_Initialized = false;
+    }
 }
 
 void Session::interrupt()

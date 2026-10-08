@@ -31,7 +31,7 @@ Repita estos pasos en PC 01, PC 02, PC 03 y PC 04:
 3. Seleccione cada host remoto. SIAC/Moonlight mostrará un PIN.
 4. En el host correspondiente, abra la interfaz Sunshine, vaya a **PIN**, escriba el PIN y asigne un nombre al cliente.
 5. Espere a que SIAC muestre el equipo como `Online` y `Paired`.
-6. Incluya también el Sunshine del PC físico actual en la lista. Abra su menú contextual y elija **Set as local SIAC computer**. Esta marca evita cualquier conexión al propio equipo.
+6. Incluya también el Sunshine del PC físico actual en la lista y emparéjelo. En **Settings > SIAC**, selecciónelo explícitamente como equipo local. Este paso es obligatorio en el MVP y evita cualquier conexión al propio equipo; no se elige otro host de manera automática.
 7. Abra **Settings > SIAC - Interconnected Desktops**:
    - verifique el equipo local;
    - ordene PC 01 a PC 04 con las flechas;
