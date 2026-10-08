@@ -29,7 +29,9 @@ void ClipboardPeer::configureSocket()
             this, &ClipboardPeer::handleReadyRead);
     connect(m_Socket, &QSslSocket::disconnected, this,
             [this]() { emit disconnected(this); });
-    connect(m_Socket, &QSslSocket::sslErrors, this,
+    connect(m_Socket,
+            QOverload<const QList<QSslError>&>::of(&QSslSocket::sslErrors),
+            this,
             [this](const QList<QSslError>&) {
                 // Trust is established by explicit certificate pinning in
                 // ClipboardManager, not by a public certificate authority.
