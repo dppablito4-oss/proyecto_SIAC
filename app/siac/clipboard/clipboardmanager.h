@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QHash>
 #include <QJsonObject>
+#include <QSharedPointer>
 #include <QSet>
 #include <QStringList>
 #include <QVector>
@@ -14,6 +15,7 @@ class ClipboardPeer;
 class ComputerManager;
 class SessionSwitcher;
 class QClipboard;
+class QCryptographicHash;
 class QFile;
 class QTcpServer;
 class QTimer;
@@ -82,6 +84,7 @@ private:
         QString basePath;
         QVector<FileEntry> entries;
         QHash<QString, quint64> received;
+        QHash<QString, QSharedPointer<QCryptographicHash>> hashes;
         QSet<QString> verified;
         QSet<QString> rootNames;
         quint64 totalSize = 0;
@@ -177,7 +180,7 @@ private:
     quint64 m_OutgoingTotal = 0;
     quint64 m_OutgoingSent = 0;
     QFile* m_OutgoingFile = nullptr;
-    class QCryptographicHash* m_OutgoingHash = nullptr;
+    QCryptographicHash* m_OutgoingHash = nullptr;
     ClipboardPeer* m_OutgoingPeer = nullptr;
     QHash<QString, IncomingTransfer> m_IncomingTransfers;
 

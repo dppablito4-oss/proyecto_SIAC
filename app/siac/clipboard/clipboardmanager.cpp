@@ -17,9 +17,11 @@
 #include <QGuiApplication>
 #include <QHostAddress>
 #include <QImage>
+#include <QImageReader>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QMimeData>
+#include <QPixmap>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QStorageInfo>
@@ -30,6 +32,7 @@
 #include <QUuid>
 #include <QtEndian>
 
+#include <cmath>
 #include <functional>
 #include <utility>
 
@@ -38,6 +41,7 @@ constexpr auto SettingsGroup = "siacClipboard";
 constexpr auto EventMimeType = "application/x-siac-clipboard-event";
 constexpr quint64 MaxCacheSize = 40ull * 1024 * 1024 * 1024;
 constexpr qint64 MaxCacheAgeMs = 24ll * 60 * 60 * 1000;
+constexpr quint64 MaxDecodedImagePixels = 64ull * 1024 * 1024;
 
 class ClipboardTcpServer : public QTcpServer
 {
@@ -264,9 +268,13 @@ void ClipboardManager::stopServer()
 
 void ClipboardManager::acceptDescriptor(qintptr descriptor)
 {
-    if (!m_Enabled) return;
     auto* peer = new ClipboardPeer(this);
     if (!peer->adoptIncomingSocket(descriptor)) {
+        peer->deleteLater();
+        return;
+    }
+    if (!m_Enabled) {
+        peer->close();
         peer->deleteLater();
         return;
     }
@@ -440,6 +448,7 @@ void ClipboardManager::activatePeerIfAllowed(ClipboardPeer* peer)
             !m_ActiveComputerUuid.isEmpty();
     if (requested || outgoingActive) {
         setSelectedPeer(peer);
+        setError({});
         setStatus(tr("Portapapeles conectado con %1").arg(peer->displayName()));
         // The connector publishes its current clipboard. The listening peer
         // waits for an actual clipboard change, avoiding a stale two-way swap.
@@ -545,8 +554,17 @@ void ClipboardManager::handleActiveComputerChanged()
     const QString nextUuid = m_Switcher->activeComputerUuid();
     if (nextUuid == m_ActiveComputerUuid) return;
 
-    if (m_ActiveOutgoingPeer && m_ActiveOutgoingPeer->isEncrypted()) {
-        m_ActiveOutgoingPeer->send(baseHeader(QStringLiteral("deactivate")));
+    if (m_ActiveOutgoingPeer) {
+        ClipboardPeer* previousPeer = m_ActiveOutgoingPeer;
+        if (previousPeer->isEncrypted()) {
+            previousPeer->send(baseHeader(QStringLiteral("deactivate")));
+        }
+        else {
+            previousPeer->close();
+        }
+        // Keep an encrypted socket alive for an in-flight transfer, but it is
+        // no longer the selected outgoing peer and must not block PC 03.
+        m_ActiveOutgoingPeer = nullptr;
     }
     if (m_SelectedPeer) {
         m_RecentPeer = m_SelectedPeer;
@@ -567,7 +585,7 @@ void ClipboardManager::handleActiveComputerChanged()
 void ClipboardManager::connectActivePeer()
 {
     if (!m_Enabled || m_ActiveComputerUuid.isEmpty() ||
-            (m_ActiveOutgoingPeer && m_ActiveOutgoingPeer->isEncrypted())) {
+            m_ActiveOutgoingPeer) {
         return;
     }
 
@@ -582,6 +600,19 @@ void ClipboardManager::connectActivePeer()
     if (!destination) {
         setStatus(tr("No se encontró el agente de la computadora activa"));
         return;
+    }
+
+    for (ClipboardPeer* peer : std::as_const(m_Peers)) {
+        if (!peer->isIncoming() && peer->isEncrypted() && isAuthorized(peer) &&
+                peer->computerUuid() == m_ActiveComputerUuid) {
+            m_ActiveOutgoingPeer = peer;
+            QJsonObject activate = baseHeader(QStringLiteral("activate"));
+            activate.insert(QStringLiteral("computerUuid"),
+                            m_Switcher->localComputerUuid());
+            if (!peer->send(activate)) return;
+            activatePeerIfAllowed(peer);
+            return;
+        }
     }
 
     QString address;
@@ -605,9 +636,14 @@ void ClipboardManager::connectActivePeer()
 
 void ClipboardManager::reconnect()
 {
-    if (m_ActiveOutgoingPeer) m_ActiveOutgoingPeer->close();
-    m_ActiveOutgoingPeer = nullptr;
-    connectActivePeer();
+    setError({});
+    if (m_ActiveOutgoingPeer) {
+        setStatus(tr("Reconectando el canal de portapapeles…"));
+        m_ActiveOutgoingPeer->close();
+    }
+    else {
+        connectActivePeer();
+    }
 }
 
 void ClipboardManager::setSelectedPeer(ClipboardPeer* peer)
@@ -690,8 +726,16 @@ void ClipboardManager::sendText(const QString& text, const QString& forwardedEve
 void ClipboardManager::sendImage(const QString& forwardedEventId,
                                  const QString& forwardedOriginId)
 {
-    const QImage image = qvariant_cast<QImage>(m_Clipboard->mimeData()->imageData());
+    const QVariant imageData = m_Clipboard->mimeData()->imageData();
+    QImage image = qvariant_cast<QImage>(imageData);
+    if (image.isNull() && imageData.canConvert<QPixmap>()) {
+        image = qvariant_cast<QPixmap>(imageData).toImage();
+    }
     if (image.isNull()) return;
+    if (quint64(image.width()) * quint64(image.height()) > MaxDecodedImagePixels) {
+        setError(tr("La imagen supera el límite de 64 megapíxeles."));
+        return;
+    }
     QByteArray payload;
     QBuffer buffer(&payload);
     buffer.open(QIODevice::WriteOnly);
@@ -969,8 +1013,18 @@ void ClipboardManager::receiveImage(ClipboardPeer*, const QJsonObject& header,
     QString eventId;
     if (!acceptEvent(header, &eventId) ||
             quint64(payload.size()) > SiacClipboardProtocol::MaxImageSize) return;
-    QImage image;
-    if (!image.loadFromData(payload, "PNG")) {
+    QBuffer encodedImage;
+    encodedImage.setData(payload);
+    encodedImage.open(QIODevice::ReadOnly);
+    QImageReader reader(&encodedImage, "PNG");
+    const QSize dimensions = reader.size();
+    if (!dimensions.isValid() ||
+            quint64(dimensions.width()) * quint64(dimensions.height()) > MaxDecodedImagePixels) {
+        setError(tr("La imagen remota tiene dimensiones no válidas o excesivas."));
+        return;
+    }
+    const QImage image = reader.read();
+    if (image.isNull()) {
         setError(tr("La imagen remota no es un PNG válido."));
         return;
     }
@@ -1000,9 +1054,9 @@ void ClipboardManager::receiveManifest(ClipboardPeer* peer,
     QString eventId;
     if (!acceptEvent(header, &eventId)) return;
     const double declaredValue = header.value(QStringLiteral("totalSize")).toDouble(-1);
-    if (declaredValue < 0 ||
-            declaredValue != double(quint64(declaredValue)) ||
-            quint64(declaredValue) > SiacClipboardProtocol::MaxTransferSize) return;
+    if (!std::isfinite(declaredValue) || declaredValue < 0 ||
+            declaredValue > double(SiacClipboardProtocol::MaxTransferSize) ||
+            std::floor(declaredValue) != declaredValue) return;
     const quint64 declaredTotal = quint64(declaredValue);
 
     QJsonParseError parseError;
@@ -1027,7 +1081,9 @@ void ClipboardManager::receiveManifest(ClipboardPeer* peer,
         const QString relative = object.value(QStringLiteral("path")).toString();
         const bool directory = object.value(QStringLiteral("directory")).toBool();
         const double sizeValue = object.value(QStringLiteral("size")).toDouble(-1);
-        if (sizeValue < 0 || sizeValue != double(quint64(sizeValue))) return;
+        if (!std::isfinite(sizeValue) || sizeValue < 0 ||
+                sizeValue > double(SiacClipboardProtocol::MaxTransferSize) ||
+                std::floor(sizeValue) != sizeValue) return;
         const quint64 size = quint64(sizeValue);
         if (directory && size != 0) return;
         if (calculatedTotal > SiacClipboardProtocol::MaxTransferSize - size) return;
@@ -1075,6 +1131,9 @@ void ClipboardManager::receiveManifest(ClipboardPeer* peer,
                 setError(tr("No se pudo crear un archivo de destino."));
                 return;
             }
+            transfer.hashes.insert(entry.relativePath,
+                                   QSharedPointer<QCryptographicHash>::create(
+                                       QCryptographicHash::Sha256));
         }
         transfer.received.insert(entry.relativePath, 0);
     }
@@ -1099,7 +1158,9 @@ void ClipboardManager::receiveFileChunk(ClipboardPeer*, const QJsonObject& heade
         return;
     }
     const double offsetValue = header.value(QStringLiteral("offset")).toDouble(-1);
-    if (offsetValue < 0 || offsetValue != double(quint64(offsetValue))) {
+    if (!std::isfinite(offsetValue) || offsetValue < 0 ||
+            offsetValue > double(SiacClipboardProtocol::MaxTransferSize) ||
+            std::floor(offsetValue) != offsetValue) {
         abortIncoming(eventId, tr("El desplazamiento de un bloque no es válido."), true);
         return;
     }
@@ -1132,6 +1193,7 @@ void ClipboardManager::receiveFileChunk(ClipboardPeer*, const QJsonObject& heade
     }
     it->received[relative] += quint64(payload.size());
     it->receivedSize += quint64(payload.size());
+    it->hashes.value(relative)->addData(payload);
     setTransferState(true, m_TransferDescription, it->receivedSize, it->totalSize);
 }
 
@@ -1158,18 +1220,17 @@ void ClipboardManager::receiveFileEnd(ClipboardPeer*, const QJsonObject& header)
         return;
     }
 
-    QFile file(QDir(it->basePath).absoluteFilePath(relative));
-    if (!file.open(QIODevice::ReadOnly)) {
+    const auto hash = it->hashes.value(relative);
+    if (hash.isNull()) {
         abortIncoming(eventId, tr("No se pudo verificar un archivo recibido."), true);
         return;
     }
-    QCryptographicHash hash(QCryptographicHash::Sha256);
-    while (!file.atEnd()) hash.addData(file.read(SiacClipboardProtocol::FileChunkSize));
-    const QString actual = QString::fromLatin1(hash.result().toHex());
+    const QString actual = QString::fromLatin1(hash->result().toHex());
     if (actual != header.value(QStringLiteral("sha256")).toString()) {
         abortIncoming(eventId, tr("La verificación SHA-256 del archivo falló."), true);
         return;
     }
+    it->hashes.remove(relative);
     it->verified.insert(relative);
 }
 
@@ -1295,7 +1356,7 @@ void ClipboardManager::setStatus(const QString& status)
 
 void ClipboardManager::setError(const QString& error)
 {
-    if (error.isEmpty() || m_LastError == error) return;
+    if (m_LastError == error) return;
     m_LastError = error;
     emit lastErrorChanged();
 }

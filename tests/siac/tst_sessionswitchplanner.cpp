@@ -1,4 +1,6 @@
 #include <QtTest>
+#include <QJsonDocument>
+#include <QtEndian>
 
 #include "siac/sessionswitchplanner.h"
 #include "siac/sessiontransitionstate.h"
@@ -25,6 +27,7 @@ private slots:
     void skipsHostWithoutUsableApplication();
     void noUsableHostReturnsRecoverableLocalState();
     void clipboardFramesHandleFragmentation();
+    void clipboardFramesRejectInvalidSizes();
     void clipboardRejectsUnsafePaths();
     void clipboardEventsAreDeduplicated();
     void clipboardAuthorizationRejectsUnknownOrChangedPeers();
@@ -211,6 +214,26 @@ void SessionSwitchPlannerTest::clipboardFramesHandleFragmentation()
     QCOMPARE(frames.at(0).header.value("type").toString(), QString("text"));
     QCOMPARE(frames.at(0).payload, QByteArray("hola\nPeru"));
     QCOMPARE(frames.at(1).payload, QByteArray("hola\nPeru"));
+}
+
+void SessionSwitchPlannerTest::clipboardFramesRejectInvalidSizes()
+{
+    using namespace SiacClipboardProtocol;
+    const QByteArray header = QJsonDocument(QJsonObject{
+        {"type", "text"}, {"version", Version}, {"payloadSize", 1e100}
+    }).toJson(QJsonDocument::Compact);
+    QByteArray frame;
+    frame.resize(4);
+    qToBigEndian<quint32>(quint32(header.size()),
+                          reinterpret_cast<uchar*>(frame.data()));
+    frame.append(header);
+
+    FrameParser parser;
+    QVector<Frame> frames;
+    QString error;
+    QVERIFY(!parser.append(frame, &frames, &error));
+    QCOMPARE(error, QString("invalid-payload-size"));
+    QVERIFY(frames.isEmpty());
 }
 
 void SessionSwitchPlannerTest::clipboardRejectsUnsafePaths()

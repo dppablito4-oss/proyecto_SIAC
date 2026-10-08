@@ -81,7 +81,13 @@ bool ClipboardPeer::send(const QJsonObject& header, const QByteArray& payload)
         emit protocolError(this, error);
         return false;
     }
-    return m_Socket->write(frame) == frame.size();
+    const qint64 written = m_Socket->write(frame);
+    if (written != frame.size()) {
+        emit peerError(this, tr("No se pudo encolar un mensaje TLS completo."));
+        close();
+        return false;
+    }
+    return true;
 }
 
 void ClipboardPeer::close()

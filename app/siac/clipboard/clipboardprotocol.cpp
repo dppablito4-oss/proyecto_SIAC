@@ -8,6 +8,7 @@
 #include <QRegularExpression>
 #include <QtEndian>
 
+#include <cmath>
 #include <utility>
 
 namespace SiacClipboardProtocol {
@@ -263,13 +264,14 @@ bool FrameParser::append(const QByteArray& data, QVector<Frame>* frames, QString
             return false;
         }
         const double payloadDouble = payloadValue.toDouble(-1);
-        const quint64 payloadSize = payloadDouble < 0 ? MaxPayloadSize + 1
-                                                       : quint64(payloadDouble);
-        if (payloadDouble != double(payloadSize) || payloadSize > MaxPayloadSize) {
+        if (!std::isfinite(payloadDouble) || payloadDouble < 0 ||
+                payloadDouble > double(MaxPayloadSize) ||
+                std::floor(payloadDouble) != payloadDouble) {
             if (error) *error = QStringLiteral("invalid-payload-size");
             m_Buffer.clear();
             return false;
         }
+        const quint64 payloadSize = quint64(payloadDouble);
 
         const quint64 frameSize = 4ull + headerSize + payloadSize;
         if (quint64(m_Buffer.size()) < frameSize) {
