@@ -3,6 +3,7 @@
 #include "nvhttp.h"
 #include "nvpairingmanager.h"
 #include "siac/sessionswitcher.h"
+#include "siac/clipboard/clipboardmanager.h"
 
 #include <Limelight.h>
 #include <QtEndian>
@@ -165,7 +166,8 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
       m_MdnsBrowser(nullptr),
       m_CompatFetcher(nullptr),
       m_NeedsDelayedFlush(false),
-      m_SessionSwitcher(nullptr)
+      m_SessionSwitcher(nullptr),
+      m_ClipboardManager(nullptr)
 {
     QSettings settings;
 
@@ -204,6 +206,12 @@ ComputerManager::ComputerManager(StreamingPreferences* prefs)
     // SIAC is deliberately layered on top of the existing host manager so it
     // reuses Moonlight discovery, pairing, polling, and persisted host data.
     m_SessionSwitcher = new SessionSwitcher(this, this);
+    m_ClipboardManager = new ClipboardManager(this, m_SessionSwitcher, this);
+}
+
+QObject* ComputerManager::clipboardManager() const
+{
+    return m_ClipboardManager;
 }
 
 ComputerManager::~ComputerManager()

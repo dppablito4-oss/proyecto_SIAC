@@ -20,6 +20,7 @@
 #include <QWaitCondition>
 
 class ComputerManager;
+class ClipboardManager;
 
 class DelayedFlushThread : public QThread
 {
@@ -212,6 +213,7 @@ class ComputerManager : public QObject
 {
     Q_OBJECT
     Q_PROPERTY(SessionSwitcher* sessionSwitcher READ sessionSwitcher CONSTANT)
+    Q_PROPERTY(QObject* clipboardManager READ clipboardManager CONSTANT)
 
     friend class DeferredHostDeletionTask;
     friend class PendingAddTask;
@@ -240,6 +242,7 @@ public:
     QVector<NvComputer*> getComputers();
 
     SessionSwitcher* sessionSwitcher() const { return m_SessionSwitcher; }
+    QObject* clipboardManager() const;
 
     // computer is deleted inside this call
     void deleteHost(NvComputer* computer);
@@ -288,4 +291,5 @@ private:
     QWaitCondition m_DelayedFlushCondition;
     bool m_NeedsDelayedFlush;
     SessionSwitcher* m_SessionSwitcher;
+    ClipboardManager* m_ClipboardManager;
 };
