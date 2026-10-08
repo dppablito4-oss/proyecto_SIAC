@@ -28,6 +28,9 @@ private slots:
     void clipboardRejectsUnsafePaths();
     void clipboardEventsAreDeduplicated();
     void clipboardAuthorizationRejectsUnknownOrChangedPeers();
+    void clipboardPairingCodeIsSymmetric();
+    void clipboardRestrictsTransportToLan();
+    void clipboardManifestRejectsPathCollisions();
 };
 
 void SessionSwitchPlannerTest::neverConnectsToLocalComputer()
@@ -260,6 +263,47 @@ void SessionSwitchPlannerTest::clipboardAuthorizationRejectsUnknownOrChangedPeer
     QVERIFY(!shouldAcceptContent(true, false, false));
     QVERIFY(shouldAcceptContent(true, true, false));
     QVERIFY(shouldAcceptContent(true, false, true));
+}
+
+void SessionSwitchPlannerTest::clipboardPairingCodeIsSymmetric()
+{
+    using namespace SiacClipboardProtocol;
+    const QString first = pairingCode("001122", "AABBCC");
+    QCOMPARE(first, pairingCode("AABBCC", "001122"));
+    QVERIFY(!first.isEmpty());
+    QVERIFY(first != pairingCode("001122", "DDEEFF"));
+    QVERIFY(pairingCode({}, "AABBCC").isEmpty());
+}
+
+void SessionSwitchPlannerTest::clipboardRestrictsTransportToLan()
+{
+    using namespace SiacClipboardProtocol;
+    QVERIFY(isLanAddress(QHostAddress("10.20.30.40")));
+    QVERIFY(isLanAddress(QHostAddress("172.16.8.4")));
+    QVERIFY(isLanAddress(QHostAddress("192.168.1.8")));
+    QVERIFY(isLanAddress(QHostAddress("169.254.20.2")));
+    QVERIFY(isLanAddress(QHostAddress("fd12:3456::1")));
+    QVERIFY(isLanAddress(QHostAddress("fe80::1234")));
+    QVERIFY(!isLanAddress(QHostAddress("127.0.0.1")));
+    QVERIFY(!isLanAddress(QHostAddress("8.8.8.8")));
+    QVERIFY(!isLanAddress(QHostAddress("2001:4860:4860::8888")));
+}
+
+void SessionSwitchPlannerTest::clipboardManifestRejectsPathCollisions()
+{
+    using namespace SiacClipboardProtocol;
+    QStringList normalized;
+    QVERIFY(validateManifestPaths({{"Carpeta", true},
+                                   {"Carpeta/archivo.txt", false}},
+                                  &normalized));
+    QCOMPARE(normalized.size(), 2);
+    QVERIFY(!validateManifestPaths({{"archivo.txt", false},
+                                    {"ARCHIVO.TXT", false}}));
+    QVERIFY(!validateManifestPaths({{"Carpeta", false},
+                                    {"Carpeta/hijo.txt", false}}));
+    QVERIFY(!validateManifestPaths({{"Carpeta/uno.txt", false},
+                                    {"carpeta/dos.txt", false}}));
+    QVERIFY(!validateManifestPaths({{"../escape.txt", false}}));
 }
 
 void SessionSwitchPlannerTest::worksWithAnyComputerAsLocal()

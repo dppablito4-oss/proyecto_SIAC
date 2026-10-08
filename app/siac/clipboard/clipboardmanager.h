@@ -82,6 +82,7 @@ private:
         QString basePath;
         QVector<FileEntry> entries;
         QHash<QString, quint64> received;
+        QSet<QString> verified;
         QSet<QString> rootNames;
         quint64 totalSize = 0;
         quint64 receivedSize = 0;
@@ -110,10 +111,12 @@ private:
     void setSelectedPeer(ClipboardPeer* peer);
 
     void handleLocalClipboardChanged();
-    void sendCurrentClipboard();
-    void sendText(const QString& text);
-    void sendImage();
-    void beginFileSend(const QList<QUrl>& urls);
+    void sendCurrentClipboard(bool allowForward = false);
+    void sendText(const QString& text, const QString& eventId = {},
+                  const QString& originId = {});
+    void sendImage(const QString& eventId = {}, const QString& originId = {});
+    void beginFileSend(const QList<QUrl>& urls, const QString& eventId = {},
+                       const QString& originId = {});
     bool buildFileManifest(const QList<QUrl>& urls, QVector<FileEntry>* entries,
                            quint64* totalSize, QString* error) const;
     void pumpFileSend();
@@ -151,11 +154,13 @@ private:
     QTcpServer* m_Server;
     QTimer* m_ReconnectTimer;
     QTimer* m_SendTimer;
+    QTimer* m_RecentPeerTimer;
     QVector<ClipboardPeer*> m_Peers;
     QVector<ClipboardPeer*> m_PendingPeers;
     QVector<AuthorizedPeer> m_AuthorizedPeers;
     QSet<ClipboardPeer*> m_ActivationRequested;
     ClipboardPeer* m_SelectedPeer = nullptr;
+    ClipboardPeer* m_RecentPeer = nullptr;
     ClipboardPeer* m_ActiveOutgoingPeer = nullptr;
     QString m_ActiveComputerUuid;
     bool m_Enabled = true;
@@ -166,6 +171,7 @@ private:
 
     QVector<FileEntry> m_OutgoingEntries;
     QString m_OutgoingEventId;
+    QString m_OutgoingOriginId;
     int m_OutgoingEntryIndex = 0;
     quint64 m_OutgoingOffset = 0;
     quint64 m_OutgoingTotal = 0;

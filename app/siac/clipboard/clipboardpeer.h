@@ -31,6 +31,7 @@ public:
     bool isEncrypted() const;
     bool isAuthorized() const { return m_Authorized; }
     void setAuthorized(bool authorized) { m_Authorized = authorized; }
+    QHostAddress peerAddress() const;
     qint64 bytesToWrite() const;
 
     void setRemoteIdentity(const QString& installationId,

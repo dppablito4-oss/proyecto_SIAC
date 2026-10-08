@@ -62,6 +62,13 @@ QString shortFingerprint(const QString& fingerprint)
     return groups.join(QLatin1Char('-'));
 }
 
+QString localCertificateFingerprint()
+{
+    const QSslCertificate certificate(IdentityManager::get()->getCertificate());
+    return QString::fromLatin1(
+                certificate.digest(QCryptographicHash::Sha256).toHex());
+}
+
 quint64 directorySize(const QString& path)
 {
     quint64 total = 0;
@@ -72,6 +79,21 @@ quint64 directorySize(const QString& path)
         total += quint64(qMax<qint64>(0, it.fileInfo().size()));
     }
     return total;
+}
+
+bool readRemoteMarker(const QMimeData* mimeData, QString* originId,
+                      QString* eventId)
+{
+    if (!mimeData || !mimeData->hasFormat(EventMimeType)) return false;
+    const QString marker = QString::fromUtf8(mimeData->data(EventMimeType));
+    const int separator = marker.indexOf(QLatin1Char(':'));
+    if (separator <= 0 || separator >= marker.size() - 1) return false;
+    const QString origin = marker.left(separator);
+    const QString event = marker.mid(separator + 1);
+    if (origin.size() > 256 || event.size() > 128) return false;
+    if (originId) *originId = origin;
+    if (eventId) *eventId = event;
+    return true;
 }
 }
 
@@ -85,6 +107,7 @@ ClipboardManager::ClipboardManager(ComputerManager* computerManager,
       m_Server(new ClipboardTcpServer()),
       m_ReconnectTimer(new QTimer(this)),
       m_SendTimer(new QTimer(this)),
+      m_RecentPeerTimer(new QTimer(this)),
       m_EventTracker(512)
 {
     m_Server->setParent(this);
@@ -99,6 +122,12 @@ ClipboardManager::ClipboardManager(ComputerManager* computerManager,
     m_SendTimer->setSingleShot(true);
     connect(m_SendTimer, &QTimer::timeout,
             this, &ClipboardManager::pumpFileSend);
+
+    m_RecentPeerTimer->setSingleShot(true);
+    m_RecentPeerTimer->setInterval(5000);
+    connect(m_RecentPeerTimer, &QTimer::timeout, this, [this]() {
+        m_RecentPeer = nullptr;
+    });
 
     connect(m_Clipboard, &QClipboard::dataChanged,
             this, &ClipboardManager::handleLocalClipboardChanged);
@@ -167,7 +196,9 @@ QStringList ClipboardManager::pendingPeers() const
     for (ClipboardPeer* peer : m_PendingPeers) {
         result.append(tr("%1 — código %2 — UUID %3")
                       .arg(peer->displayName().isEmpty() ? tr("Equipo sin nombre") : peer->displayName(),
-                           shortFingerprint(peer->certificateFingerprint()),
+                           SiacClipboardProtocol::pairingCode(
+                               localCertificateFingerprint(),
+                               peer->certificateFingerprint()),
                            peer->computerUuid().isEmpty() ? tr("sin configurar") : peer->computerUuid()));
     }
     return result;
@@ -204,6 +235,8 @@ void ClipboardManager::setEnabled(bool enabled)
     else {
         cancelTransfer();
         stopServer();
+        m_RecentPeerTimer->stop();
+        m_RecentPeer = nullptr;
         for (ClipboardPeer* peer : std::as_const(m_Peers)) peer->close();
         setSelectedPeer(nullptr);
         setStatus(tr("Portapapeles compartido desactivado"));
@@ -233,10 +266,17 @@ void ClipboardManager::acceptDescriptor(qintptr descriptor)
 {
     if (!m_Enabled) return;
     auto* peer = new ClipboardPeer(this);
-    attachPeer(peer);
     if (!peer->adoptIncomingSocket(descriptor)) {
         peer->deleteLater();
+        return;
     }
+    if (!SiacClipboardProtocol::isLanAddress(peer->peerAddress())) {
+        setError(tr("Se rechazó una conexión de portapapeles fuera de la red local."));
+        peer->close();
+        peer->deleteLater();
+        return;
+    }
+    attachPeer(peer);
 }
 
 void ClipboardManager::attachPeer(ClipboardPeer* peer)
@@ -401,7 +441,9 @@ void ClipboardManager::activatePeerIfAllowed(ClipboardPeer* peer)
     if (requested || outgoingActive) {
         setSelectedPeer(peer);
         setStatus(tr("Portapapeles conectado con %1").arg(peer->displayName()));
-        sendCurrentClipboard();
+        // The connector publishes its current clipboard. The listening peer
+        // waits for an actual clipboard change, avoiding a stale two-way swap.
+        if (outgoingActive) sendCurrentClipboard(true);
     }
 }
 
@@ -429,14 +471,20 @@ void ClipboardManager::handleFrame(ClipboardPeer* peer, const QJsonObject& heade
     }
     if (type == QStringLiteral("deactivate")) {
         m_ActivationRequested.remove(peer);
-        if (peer == m_SelectedPeer) setSelectedPeer(nullptr);
+        if (peer == m_SelectedPeer) {
+            m_RecentPeer = peer;
+            m_RecentPeerTimer->start();
+            setSelectedPeer(nullptr);
+        }
         return;
     }
     const QString eventId = header.value(QStringLiteral("eventId")).toString();
     const bool existingTransfer = m_IncomingTransfers.contains(eventId) &&
             m_IncomingTransfers.value(eventId).peer == peer;
     if (!SiacClipboardProtocol::shouldAcceptContent(
-                isAuthorized(peer), peer == m_SelectedPeer, existingTransfer)) {
+                isAuthorized(peer),
+                peer == m_SelectedPeer || peer == m_RecentPeer,
+                existingTransfer)) {
         return;
     }
 
@@ -448,8 +496,15 @@ void ClipboardManager::handleFrame(ClipboardPeer* peer, const QJsonObject& heade
     else if (type == QStringLiteral("fileComplete")) receiveTransferComplete(peer, header);
     else if (type == QStringLiteral("cancel")) receiveCancel(peer, header);
     else if (type == QStringLiteral("error")) {
-        setError(tr("El equipo remoto informó: %1")
-                 .arg(header.value(QStringLiteral("message")).toString()));
+        QString message = tr("El equipo remoto informó: %1")
+                .arg(header.value(QStringLiteral("message")).toString());
+        if (peer == m_OutgoingPeer &&
+                header.value(QStringLiteral("eventId")).toString() == m_OutgoingEventId) {
+            finishOutgoingFile(&message);
+        }
+        else {
+            setError(message);
+        }
     }
 }
 
@@ -457,6 +512,10 @@ void ClipboardManager::handlePeerDisconnected(ClipboardPeer* peer)
 {
     const bool wasOutgoing = peer == m_ActiveOutgoingPeer;
     if (peer == m_SelectedPeer) setSelectedPeer(nullptr);
+    if (peer == m_RecentPeer) {
+        m_RecentPeer = nullptr;
+        m_RecentPeerTimer->stop();
+    }
     if (wasOutgoing) m_ActiveOutgoingPeer = nullptr;
     m_ActivationRequested.remove(peer);
     m_PendingPeers.removeAll(peer);
@@ -488,6 +547,10 @@ void ClipboardManager::handleActiveComputerChanged()
 
     if (m_ActiveOutgoingPeer && m_ActiveOutgoingPeer->isEncrypted()) {
         m_ActiveOutgoingPeer->send(baseHeader(QStringLiteral("deactivate")));
+    }
+    if (m_SelectedPeer) {
+        m_RecentPeer = m_SelectedPeer;
+        m_RecentPeerTimer->start();
     }
     setSelectedPeer(nullptr);
     m_ActiveComputerUuid = nextUuid;
@@ -524,12 +587,11 @@ void ClipboardManager::connectActivePeer()
     QString address;
     {
         QReadLocker lock(&destination->lock);
-        address = destination->activeAddress.address();
-        if (address.isEmpty()) address = destination->localAddress.address();
+        address = destination->localAddress.address();
     }
     const QHostAddress hostAddress(address);
-    if (hostAddress.isNull()) {
-        setStatus(tr("La computadora activa no tiene una dirección LAN válida"));
+    if (!SiacClipboardProtocol::isLanAddress(hostAddress)) {
+        setStatus(tr("La computadora activa no tiene una dirección LAN privada válida"));
         return;
     }
 
@@ -561,11 +623,20 @@ void ClipboardManager::handleLocalClipboardChanged()
     sendCurrentClipboard();
 }
 
-void ClipboardManager::sendCurrentClipboard()
+void ClipboardManager::sendCurrentClipboard(bool allowForward)
 {
     if (!m_Enabled || !isAuthorized(m_SelectedPeer)) return;
     const QMimeData* mime = m_Clipboard->mimeData();
-    if (!mime || mime->hasFormat(EventMimeType)) return;
+    if (!mime) return;
+
+    QString originId;
+    QString eventId;
+    const bool forwarding = readRemoteMarker(mime, &originId, &eventId);
+    if (forwarding && (!allowForward || !m_EventTracker.contains(eventId) ||
+                       originId == IdentityManager::get()->getUniqueId() ||
+                       originId == m_SelectedPeer->installationId())) {
+        return;
+    }
 
     if (mime->hasUrls()) {
         QList<QUrl> localUrls;
@@ -581,36 +652,43 @@ void ClipboardManager::sendCurrentClipboard()
                 return;
             }
 #endif
-            beginFileSend(localUrls);
+            beginFileSend(localUrls, eventId, originId);
             return;
         }
     }
     if (mime->hasImage()) {
-        sendImage();
+        sendImage(eventId, originId);
         return;
     }
     if (mime->hasText()) {
-        sendText(mime->text());
+        sendText(mime->text(), eventId, originId);
     }
 }
 
-void ClipboardManager::sendText(const QString& text)
+void ClipboardManager::sendText(const QString& text, const QString& forwardedEventId,
+                                const QString& forwardedOriginId)
 {
     const QByteArray payload = text.toUtf8();
     if (quint64(payload.size()) > SiacClipboardProtocol::MaxTextSize) {
         setError(tr("El texto supera el límite de 16 MiB."));
         return;
     }
-    const QString eventId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_EventTracker.remember(eventId);
+    const QString eventId = forwardedEventId.isEmpty()
+            ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+            : forwardedEventId;
+    const QString originId = forwardedOriginId.isEmpty()
+            ? IdentityManager::get()->getUniqueId() : forwardedOriginId;
+    if (forwardedEventId.isEmpty()) m_EventTracker.remember(eventId);
     QJsonObject header = baseHeader(QStringLiteral("text"));
     header.insert(QStringLiteral("eventId"), eventId);
+    header.insert(QStringLiteral("originId"), originId);
     if (!m_SelectedPeer->send(header, payload)) {
         setError(tr("No se pudo enviar el texto al equipo activo."));
     }
 }
 
-void ClipboardManager::sendImage()
+void ClipboardManager::sendImage(const QString& forwardedEventId,
+                                 const QString& forwardedOriginId)
 {
     const QImage image = qvariant_cast<QImage>(m_Clipboard->mimeData()->imageData());
     if (image.isNull()) return;
@@ -622,10 +700,15 @@ void ClipboardManager::sendImage()
         setError(tr("La imagen no pudo codificarse o supera el límite de 64 MiB."));
         return;
     }
-    const QString eventId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_EventTracker.remember(eventId);
+    const QString eventId = forwardedEventId.isEmpty()
+            ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+            : forwardedEventId;
+    const QString originId = forwardedOriginId.isEmpty()
+            ? IdentityManager::get()->getUniqueId() : forwardedOriginId;
+    if (forwardedEventId.isEmpty()) m_EventTracker.remember(eventId);
     QJsonObject header = baseHeader(QStringLiteral("image"));
     header.insert(QStringLiteral("eventId"), eventId);
+    header.insert(QStringLiteral("originId"), originId);
     if (!m_SelectedPeer->send(header, payload)) {
         setError(tr("No se pudo enviar la imagen al equipo activo."));
     }
@@ -688,7 +771,9 @@ bool ClipboardManager::buildFileManifest(const QList<QUrl>& urls,
     return !entries->isEmpty();
 }
 
-void ClipboardManager::beginFileSend(const QList<QUrl>& urls)
+void ClipboardManager::beginFileSend(const QList<QUrl>& urls,
+                                     const QString& forwardedEventId,
+                                     const QString& forwardedOriginId)
 {
     if (m_OutgoingPeer) cancelTransfer();
     QString error;
@@ -697,8 +782,12 @@ void ClipboardManager::beginFileSend(const QList<QUrl>& urls)
         return;
     }
 
-    m_OutgoingEventId = QUuid::createUuid().toString(QUuid::WithoutBraces);
-    m_EventTracker.remember(m_OutgoingEventId);
+    m_OutgoingEventId = forwardedEventId.isEmpty()
+            ? QUuid::createUuid().toString(QUuid::WithoutBraces)
+            : forwardedEventId;
+    m_OutgoingOriginId = forwardedOriginId.isEmpty()
+            ? IdentityManager::get()->getUniqueId() : forwardedOriginId;
+    if (forwardedEventId.isEmpty()) m_EventTracker.remember(m_OutgoingEventId);
     m_OutgoingEntryIndex = 0;
     m_OutgoingOffset = 0;
     m_OutgoingSent = 0;
@@ -712,6 +801,7 @@ void ClipboardManager::beginFileSend(const QList<QUrl>& urls)
     }
     QJsonObject header = baseHeader(QStringLiteral("fileManifest"));
     header.insert(QStringLiteral("eventId"), m_OutgoingEventId);
+    header.insert(QStringLiteral("originId"), m_OutgoingOriginId);
     header.insert(QStringLiteral("totalSize"), double(m_OutgoingTotal));
     const QByteArray payload = QJsonDocument(manifest).toJson(QJsonDocument::Compact);
     if (!m_OutgoingPeer->send(header, payload)) {
@@ -760,6 +850,7 @@ void ClipboardManager::pumpFileSend()
         if (!chunk.isEmpty()) {
             QJsonObject header = baseHeader(QStringLiteral("fileChunk"));
             header.insert(QStringLiteral("eventId"), m_OutgoingEventId);
+            header.insert(QStringLiteral("originId"), m_OutgoingOriginId);
             header.insert(QStringLiteral("path"), entry.relativePath);
             header.insert(QStringLiteral("offset"), double(m_OutgoingOffset));
             if (!m_OutgoingPeer->send(header, chunk)) {
@@ -785,9 +876,15 @@ void ClipboardManager::pumpFileSend()
 
         QJsonObject end = baseHeader(QStringLiteral("fileEnd"));
         end.insert(QStringLiteral("eventId"), m_OutgoingEventId);
+        end.insert(QStringLiteral("originId"), m_OutgoingOriginId);
         end.insert(QStringLiteral("path"), entry.relativePath);
         end.insert(QStringLiteral("sha256"), QString::fromLatin1(m_OutgoingHash->result().toHex()));
-        m_OutgoingPeer->send(end);
+        if (!m_OutgoingPeer->send(end)) {
+            QString error = tr("No se pudo confirmar la integridad de %1.")
+                    .arg(entry.relativePath);
+            finishOutgoingFile(&error);
+            return;
+        }
         delete m_OutgoingFile;
         m_OutgoingFile = nullptr;
         delete m_OutgoingHash;
@@ -798,7 +895,12 @@ void ClipboardManager::pumpFileSend()
 
     QJsonObject complete = baseHeader(QStringLiteral("fileComplete"));
     complete.insert(QStringLiteral("eventId"), m_OutgoingEventId);
-    m_OutgoingPeer->send(complete);
+    complete.insert(QStringLiteral("originId"), m_OutgoingOriginId);
+    if (!m_OutgoingPeer->send(complete)) {
+        QString error = tr("No se pudo confirmar el final de la transferencia.");
+        finishOutgoingFile(&error);
+        return;
+    }
     finishOutgoingFile();
 }
 
@@ -809,6 +911,7 @@ void ClipboardManager::finishOutgoingFile(QString* error)
             !m_OutgoingEventId.isEmpty()) {
         QJsonObject cancel = baseHeader(QStringLiteral("cancel"));
         cancel.insert(QStringLiteral("eventId"), m_OutgoingEventId);
+        cancel.insert(QStringLiteral("originId"), m_OutgoingOriginId);
         m_OutgoingPeer->send(cancel);
     }
     delete m_OutgoingFile;
@@ -817,6 +920,7 @@ void ClipboardManager::finishOutgoingFile(QString* error)
     m_OutgoingHash = nullptr;
     m_OutgoingEntries.clear();
     m_OutgoingEventId.clear();
+    m_OutgoingOriginId.clear();
     m_OutgoingPeer = nullptr;
     m_OutgoingEntryIndex = 0;
     m_OutgoingOffset = 0;
@@ -915,16 +1019,12 @@ void ClipboardManager::receiveManifest(ClipboardPeer* peer,
     transfer.basePath = transferPath(eventId);
     transfer.peer = peer;
     quint64 calculatedTotal = 0;
+    QVector<SiacClipboardProtocol::ManifestPath> manifestPaths;
 
     for (const QJsonValue& value : document.array()) {
         if (!value.isObject()) return;
         const QJsonObject object = value.toObject();
-        QString relative;
-        if (!SiacClipboardProtocol::isSafeRelativePath(
-                    object.value(QStringLiteral("path")).toString(), &relative)) {
-            setError(tr("Se bloqueó una ruta remota insegura."));
-            return;
-        }
+        const QString relative = object.value(QStringLiteral("path")).toString();
         const bool directory = object.value(QStringLiteral("directory")).toBool();
         const double sizeValue = object.value(QStringLiteral("size")).toDouble(-1);
         if (sizeValue < 0 || sizeValue != double(quint64(sizeValue))) return;
@@ -933,10 +1033,24 @@ void ClipboardManager::receiveManifest(ClipboardPeer* peer,
         if (calculatedTotal > SiacClipboardProtocol::MaxTransferSize - size) return;
         calculatedTotal += size;
         transfer.entries.append({relative, {}, size, directory});
-        transfer.rootNames.insert(relative.section(QLatin1Char('/'), 0, 0));
+        manifestPaths.append({relative, directory});
     }
-    if (calculatedTotal != declaredTotal ||
-            QStorageInfo(cacheRoot()).bytesAvailable() < qint64(declaredTotal)) {
+
+    QStringList normalizedPaths;
+    if (!SiacClipboardProtocol::validateManifestPaths(
+                manifestPaths, &normalizedPaths)) {
+        setError(tr("Se bloqueó un manifiesto con rutas inseguras o en conflicto."));
+        return;
+    }
+    for (int i = 0; i < transfer.entries.size(); ++i) {
+        transfer.entries[i].relativePath = normalizedPaths.at(i);
+        transfer.rootNames.insert(normalizedPaths.at(i).section(QLatin1Char('/'), 0, 0));
+    }
+    const QStorageInfo storage(cacheRoot());
+    const quint64 cachedSize = directorySize(cacheRoot());
+    if (calculatedTotal != declaredTotal || !storage.isValid() || !storage.isReady() ||
+            storage.bytesAvailable() < qint64(declaredTotal) ||
+            cachedSize > MaxCacheSize - declaredTotal) {
         setError(tr("No hay espacio suficiente o el tamaño del manifiesto no coincide."));
         return;
     }
@@ -1030,6 +1144,20 @@ void ClipboardManager::receiveFileEnd(ClipboardPeer*, const QJsonObject& header)
     if (!SiacClipboardProtocol::isSafeRelativePath(
                 header.value(QStringLiteral("path")).toString(), &relative)) return;
 
+    bool declaredFile = false;
+    quint64 expectedSize = 0;
+    for (const FileEntry& entry : std::as_const(it->entries)) {
+        if (entry.relativePath == relative && !entry.directory) {
+            declaredFile = true;
+            expectedSize = entry.size;
+            break;
+        }
+    }
+    if (!declaredFile || it->received.value(relative) != expectedSize) {
+        abortIncoming(eventId, tr("Se intentó verificar un archivo incompleto o no declarado."), true);
+        return;
+    }
+
     QFile file(QDir(it->basePath).absoluteFilePath(relative));
     if (!file.open(QIODevice::ReadOnly)) {
         abortIncoming(eventId, tr("No se pudo verificar un archivo recibido."), true);
@@ -1040,7 +1168,9 @@ void ClipboardManager::receiveFileEnd(ClipboardPeer*, const QJsonObject& header)
     const QString actual = QString::fromLatin1(hash.result().toHex());
     if (actual != header.value(QStringLiteral("sha256")).toString()) {
         abortIncoming(eventId, tr("La verificación SHA-256 del archivo falló."), true);
+        return;
     }
+    it->verified.insert(relative);
 }
 
 void ClipboardManager::receiveTransferComplete(ClipboardPeer*, const QJsonObject& header)
@@ -1049,7 +1179,9 @@ void ClipboardManager::receiveTransferComplete(ClipboardPeer*, const QJsonObject
     auto it = m_IncomingTransfers.find(eventId);
     if (it == m_IncomingTransfers.end()) return;
     for (const FileEntry& entry : std::as_const(it->entries)) {
-        if (!entry.directory && it->received.value(entry.relativePath) != entry.size) {
+        if (!entry.directory &&
+                (it->received.value(entry.relativePath) != entry.size ||
+                 !it->verified.contains(entry.relativePath))) {
             abortIncoming(eventId, tr("La transferencia terminó con archivos incompletos."), true);
             return;
         }
@@ -1067,10 +1199,15 @@ void ClipboardManager::receiveTransferComplete(ClipboardPeer*, const QJsonObject
     setStatus(tr("Archivos remotos preparados en el portapapeles local"));
 }
 
-void ClipboardManager::receiveCancel(ClipboardPeer*, const QJsonObject& header)
+void ClipboardManager::receiveCancel(ClipboardPeer* peer, const QJsonObject& header)
 {
-    abortIncoming(header.value(QStringLiteral("eventId")).toString(),
-                  tr("La transferencia fue cancelada por el otro equipo."), false);
+    const QString eventId = header.value(QStringLiteral("eventId")).toString();
+    QString message = tr("La transferencia fue cancelada por el otro equipo.");
+    if (peer == m_OutgoingPeer && eventId == m_OutgoingEventId) {
+        finishOutgoingFile(&message);
+        return;
+    }
+    abortIncoming(eventId, message, false);
 }
 
 void ClipboardManager::abortIncoming(const QString& eventId,

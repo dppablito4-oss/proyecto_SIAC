@@ -42,14 +42,14 @@ SIAC reutiliza el par RSA/certificado persistente de `IdentityManager` solo como
 El canal aplica una autorización separada:
 
 1. ambos extremos presentan certificado durante TLS;
-2. la huella SHA-256, el identificador de instalación y el UUID Sunshine local declarado se muestran como solicitud pendiente;
+2. cada extremo deriva el mismo código corto a partir de las dos huellas SHA-256; además muestra nombre y UUID Sunshine del peer;
 3. el usuario autoriza o rechaza desde SIAC;
 4. las huellas autorizadas se guardan en el grupo `siacClipboard` de `QSettings`;
 5. un cambio de certificado para el mismo identificador se rechaza;
 6. no se aceptan mensajes de portapapeles hasta que la huella esté autorizada;
 7. el cliente comprueba que el UUID local declarado por el peer coincide con el host Moonlight al que pretendía conectarse.
 
-La comparación visual de la huella corta durante el primer emparejamiento mitiga suplantación en esa primera conexión. No se abren servidores públicos ni se usa descubrimiento por Internet. El servidor escucha en el puerto TCP LAN configurable `48219`; el firewall debe limitarlo al perfil privado.
+La comparación visual del código simétrico en los dos PC durante el primer emparejamiento mitiga suplantación en esa primera conexión. No se usa descubrimiento por Internet. El servidor escucha en el puerto TCP fijo `48219`, rechaza direcciones que no sean privadas o link-local y el cliente usa exclusivamente la dirección LAN registrada; el firewall de Windows también debe limitarlo al perfil privado.
 
 ## Selección del peer
 
@@ -59,9 +59,12 @@ Solo se sincroniza con el host SIAC activo:
 - el cliente envía `activate` y el agente remoto selecciona esa conexión;
 - F10 envía `deactivate`, con lo que nuevos cambios dejan de sincronizarse;
 - la conexión y una transferencia ya iniciada sobreviven al fin del streaming;
+- una ventana de gracia de cinco segundos acepta los últimos datos ya puestos en tránsito antes de F10; después, solo continúan eventos de archivo cuyo manifiesto ya fue aceptado;
 - al cambiar de PC se desactiva el peer anterior antes de activar el nuevo.
 
 No existe difusión a los demás equipos autorizados.
+
+Al pasar PC 02 → PC 03, SIAC puede reenviar el contenido que ya está en el portapapeles local. Conserva `originId` y `eventId`; el rastreador de eventos en todos los extremos corta un posible retorno al origen y evita crear un evento artificial nuevo.
 
 ## Protocolo v1
 
@@ -95,7 +98,7 @@ La implementación v0.2 usa **preparación automática cifrada**, no OLE virtual
 2. El origen recorre archivos y directorios sin seguir enlaces simbólicos.
 3. Envía manifiesto y bloques de 256 KiB sin cargar archivos completos en RAM.
 4. El destino valida cada ruta y escribe bajo su directorio privado de caché.
-5. Al verificar tamaños y completar todos los elementos, publica las rutas raíz recibidas en el portapapeles Windows.
+5. Cada archivo debe completar su tamaño declarado y superar SHA-256; solo entonces, y cuando todos estén verificados, se publican las rutas raíz en el portapapeles Windows.
 6. Explorer puede pegarlas en cualquier carpeta con Ctrl+V.
 
 La conexión no se destruye con F10, por lo que una preparación iniciada puede terminar después del retorno local. El usuario ve progreso y puede cancelarla. El caché tiene cuota, antigüedad máxima y limpieza de transferencias incompletas.
@@ -121,6 +124,7 @@ Windows permite delayed rendering, pero el propietario debe responder mientras c
 - bloques máximos de 512 KiB en protocolo; emisor usa 256 KiB.
 - no se siguen enlaces simbólicos ni junctions.
 - se rechazan rutas absolutas, traversal, ADS (`:`), nombres reservados y componentes que terminan en punto/espacio.
+- se rechazan rutas duplicadas sin distinguir mayúsculas, colisiones de capitalización y árboles que intenten usar un archivo como directorio.
 - los archivos se escriben únicamente dentro del directorio resuelto del evento.
 - `Ctrl+X`/movimiento no se sincroniza; el origen nunca se elimina.
 - desconexión o error deja el evento incompleto fuera del portapapeles y lo elimina.
@@ -142,7 +146,8 @@ Automatizables sin dos PC:
 - deduplicación de eventos;
 - selección exclusiva del peer;
 - autorización por huella y cambio de certificado;
-- manifiestos de archivo y progreso;
+- código de emparejamiento simétrico y restricción a direcciones LAN;
+- manifiestos, colisiones de rutas y progreso;
 - cancelación y recuperación.
 
 Pendientes de hardware:

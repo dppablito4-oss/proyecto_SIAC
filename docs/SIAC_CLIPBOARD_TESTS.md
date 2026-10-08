@@ -7,7 +7,7 @@ Estado inicial: pendiente de ejecución en dos PC Windows físicos.
 - [ ] PC 01 y PC 02 usan el mismo commit y están en una LAN privada.
 - [ ] Sunshine y el escritorio remoto funcionan antes de activar portapapeles.
 - [ ] El PC local está seleccionado explícitamente en cada instalación.
-- [ ] Ambos códigos cortos TLS fueron comparados físicamente antes de autorizar.
+- [ ] El código corto TLS es idéntico en ambos PC y fue comparado físicamente antes de autorizar.
 - [ ] Se registran hora, tamaño, resultado y logs para cada caso.
 
 ## Texto

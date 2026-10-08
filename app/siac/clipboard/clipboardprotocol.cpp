@@ -1,5 +1,6 @@
 #include "clipboardprotocol.h"
 
+#include <QCryptographicHash>
 #include <QDataStream>
 #include <QDir>
 #include <QJsonDocument>
@@ -33,6 +34,44 @@ bool shouldAcceptContent(bool authorized, bool selectedPeer,
                          bool existingTransfer)
 {
     return authorized && (selectedPeer || existingTransfer);
+}
+
+QString pairingCode(const QString& firstFingerprint,
+                    const QString& secondFingerprint)
+{
+    if (firstFingerprint.isEmpty() || secondFingerprint.isEmpty()) {
+        return {};
+    }
+
+    QString first = firstFingerprint.toLower();
+    QString second = secondFingerprint.toLower();
+    if (second < first) qSwap(first, second);
+    const QByteArray digest = QCryptographicHash::hash(
+                first.toLatin1() + '\0' + second.toLatin1(),
+                QCryptographicHash::Sha256).toHex().left(12).toUpper();
+    QStringList groups;
+    for (int i = 0; i < digest.size(); i += 4) {
+        groups.append(QString::fromLatin1(digest.mid(i, 4)));
+    }
+    return groups.join(QLatin1Char('-'));
+}
+
+bool isLanAddress(const QHostAddress& address)
+{
+    if (address.isNull() || address.isLoopback()) return false;
+
+    bool isIpv4 = false;
+    const quint32 ipv4 = address.toIPv4Address(&isIpv4);
+    if (isIpv4) {
+        return (ipv4 & 0xff000000u) == 0x0a000000u ||
+                (ipv4 & 0xfff00000u) == 0xac100000u ||
+                (ipv4 & 0xffff0000u) == 0xc0a80000u ||
+                (ipv4 & 0xffff0000u) == 0xa9fe0000u;
+    }
+
+    const Q_IPV6ADDR ipv6 = address.toIPv6Address();
+    return (ipv6.c[0] & 0xfeu) == 0xfcu ||
+            (ipv6.c[0] == 0xfeu && (ipv6.c[1] & 0xc0u) == 0x80u);
 }
 
 QByteArray encodeFrame(QJsonObject header, const QByteArray& payload, QString* error)
@@ -104,6 +143,69 @@ bool isSafeRelativePath(const QString& path, QString* normalized)
         return false;
     }
     if (normalized) *normalized = clean;
+    return true;
+}
+
+bool validateManifestPaths(const QVector<ManifestPath>& paths,
+                           QStringList* normalizedPaths,
+                           QString* error)
+{
+    if (paths.isEmpty() || paths.size() > MaxTransferEntries) {
+        if (error) *error = QStringLiteral("invalid-entry-count");
+        return false;
+    }
+
+    QStringList normalized;
+    QHash<QString, bool> kinds;
+    QHash<QString, QString> componentSpellings;
+    normalized.reserve(paths.size());
+    for (const ManifestPath& entry : paths) {
+        QString clean;
+        if (!isSafeRelativePath(entry.path, &clean)) {
+            if (error) *error = QStringLiteral("unsafe-path");
+            return false;
+        }
+        const QString key = clean.toCaseFolded();
+        if (kinds.contains(key)) {
+            if (error) *error = QStringLiteral("duplicate-path");
+            return false;
+        }
+        kinds.insert(key, entry.directory);
+        normalized.append(clean);
+
+        const QStringList components = clean.split(QLatin1Char('/'));
+        QString originalPrefix;
+        QString foldedPrefix;
+        for (const QString& component : components) {
+            if (!originalPrefix.isEmpty()) {
+                originalPrefix += QLatin1Char('/');
+                foldedPrefix += QLatin1Char('/');
+            }
+            originalPrefix += component;
+            foldedPrefix += component.toCaseFolded();
+            if (componentSpellings.contains(foldedPrefix) &&
+                    componentSpellings.value(foldedPrefix) != originalPrefix) {
+                if (error) *error = QStringLiteral("case-collision");
+                return false;
+            }
+            componentSpellings.insert(foldedPrefix, originalPrefix);
+        }
+    }
+
+    for (auto it = kinds.cbegin(); it != kinds.cend(); ++it) {
+        QString ancestor = it.key();
+        int separator = ancestor.lastIndexOf(QLatin1Char('/'));
+        while (separator >= 0) {
+            ancestor.truncate(separator);
+            if (kinds.contains(ancestor) && !kinds.value(ancestor)) {
+                if (error) *error = QStringLiteral("file-used-as-directory");
+                return false;
+            }
+            separator = ancestor.lastIndexOf(QLatin1Char('/'));
+        }
+    }
+
+    if (normalizedPaths) *normalizedPaths = normalized;
     return true;
 }
 

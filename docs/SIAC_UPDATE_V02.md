@@ -21,7 +21,7 @@ La autorización Sunshine no concede acceso al canal SIAC.
 1. Active **Portapapeles compartido** en ambos equipos.
 2. Conecte PC 01 a PC 02 desde **Mis computadoras** o con `Ctrl+Alt+F9`.
 3. Abra **Portapapeles** en ambos SIAC.
-4. Compare el código corto de la solicitud en los dos equipos.
+4. Compare el código corto de la solicitud en los dos equipos: el valor derivado de ambos certificados debe ser idéntico.
 5. Autorice únicamente si nombre, UUID y código corresponden al equipo esperado.
 6. Repita en sentido contrario si aparece una segunda solicitud. La comunicación es TLS mutua y ambas instalaciones mantienen su propia lista de autorizaciones.
 

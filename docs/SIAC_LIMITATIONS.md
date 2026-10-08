@@ -3,7 +3,7 @@
 ## Portapapeles v0.2
 
 - La transferencia de archivos implementada prepara contenido automáticamente en un caché privado antes de publicar `CF_HDROP`; todavía no usa `CFSTR_FILEDESCRIPTORW`/`CFSTR_FILECONTENTS` con `IStream` bajo demanda.
-- El puerto TCP 48219 debe estar permitido solo en el perfil de red privada de Windows.
+- El canal solo acepta direcciones privadas/link-local y usa la dirección LAN de Moonlight. Además, el puerto TCP 48219 debe permitirse únicamente en el perfil de red privada de Windows.
 - La autorización SIAC es independiente del emparejamiento Sunshine y debe confirmarse en ambas instalaciones.
 - El caché admite hasta 40 GiB y elimina entradas antiguas; cada evento admite como máximo 20 GiB y 10 000 elementos.
 - Ctrl+X no se implementa como movimiento remoto y nunca debe borrar el original.

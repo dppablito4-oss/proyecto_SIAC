@@ -1,4 +1,4 @@
-QT += core testlib
+QT += core network testlib
 QT -= gui
 CONFIG += console testcase c++17
 TEMPLATE = app

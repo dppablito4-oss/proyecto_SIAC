@@ -94,6 +94,11 @@ bool ClipboardPeer::isEncrypted() const
     return m_Socket->isEncrypted();
 }
 
+QHostAddress ClipboardPeer::peerAddress() const
+{
+    return m_Socket->peerAddress();
+}
+
 qint64 ClipboardPeer::bytesToWrite() const
 {
     return m_Socket->bytesToWrite();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QByteArray>
+#include <QHostAddress>
 #include <QJsonObject>
 #include <QQueue>
 #include <QSet>
@@ -42,6 +43,19 @@ AuthorizationDecision authorizePeer(const QString& storedInstallationId,
                                     const QString& actualFingerprint);
 bool shouldAcceptContent(bool authorized, bool selectedPeer,
                          bool existingTransfer);
+QString pairingCode(const QString& firstFingerprint,
+                    const QString& secondFingerprint);
+bool isLanAddress(const QHostAddress& address);
+
+struct ManifestPath
+{
+    QString path;
+    bool directory = false;
+};
+
+bool validateManifestPaths(const QVector<ManifestPath>& paths,
+                           QStringList* normalizedPaths = nullptr,
+                           QString* error = nullptr);
 
 QByteArray encodeFrame(QJsonObject header, const QByteArray& payload,
                        QString* error = nullptr);
